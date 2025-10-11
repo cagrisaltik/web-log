@@ -61,7 +61,7 @@ npm (Node.js ile birlikte gelir)
 
 Projeyi Klonlayın:
 
-git clone [https://github.com/cagrisaltik/web-log.git](https://github.com/cagrisaltik/web-log).git)
+git clone [https://github.com/cagrisaltik/web-log.git](https://github.com/cagrisaltik/web-log)
 
 Backend Klasörüne Gidin:
 
