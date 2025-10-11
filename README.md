@@ -61,11 +61,11 @@ npm (Node.js ile birlikte gelir)
 
 Projeyi Klonlayın:
 
-git clone [https://github.com/kullanici-adiniz/proje-adiniz.git](https://github.com/kullanici-adiniz/proje-adiniz.git)
+git clone [https://github.com/cagrisaltik/web-log.git](https://github.com/cagrisaltik/web-log).git)
 
 Backend Klasörüne Gidin:
 
-cd proje-adiniz/log-monitor-backend
+cd web-log
 
 Gerekli NPM Paketlerini Yükleyin:
 
