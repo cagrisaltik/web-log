@@ -11,7 +11,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 app.use(express.json());
-app.use(cors()); // <-- YENİ: Gelen tüm isteklere izin vermek için cors'u etkinleştir.
+// <-- YENİ: Gelen tüm isteklere izin vermek için cors'u etkinleştir.
 
 let sshConnection = null;
 
@@ -106,4 +106,5 @@ app.post('/disconnect', (req, res) => {
 server.listen(PORT, () => {
   console.log(`Sunucu http://localhost:${PORT} adresinde başlatıldı.`);
 });
+
 
