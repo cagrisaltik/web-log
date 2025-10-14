@@ -1,389 +1,426 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sunucu Log Görüntüleyici</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        
-        /* Log satırları için yeni ve geliştirilmiş stiller */
-        .log-line { 
-            white-space: pre-wrap; 
-            word-break: break-all; 
-            padding: 4px 12px;
-            border-left: 4px solid transparent; /* Varsayılan olarak şeffaf kenarlık */
-            transition: background-color 0.2s ease;
-        }
-        .log-line:hover {
-            background-color: rgba(255, 255, 255, 0.05); /* Üzerine gelince hafif parlama */
-        }
-
-        /* Durumlara göre renk ve kenarlık atamaları */
-        .log-line.error { 
-            border-left-color: #ef4444; /* Kırmızı */
-            color: #fca5a5; 
-        }
-        .log-line.warn { 
-            border-left-color: #f59e0b; /* Sarı */
-            color: #fcd34d; 
-        }
-        .log-line.info { 
-            border-left-color: #3b82f6; /* Mavi */
-            color: #93c5fd; 
-        }
-        .log-line.success { 
-            border-left-color: #22c55e; /* Yeşil */
-            color: #86efac; 
-        }
-        .log-line.debug { 
-            border-left-color: #a855f7; /* Mor */
-            color: #d8b4fe; 
-        }
-
+        /* Kaydırma çubuğu stilleri */
         ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #1f2937; }
-        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
-        .btn { transition: all 0.2s ease-in-out; }
-        .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        /* Log satırı stilleri */
+        .log-line {
+            padding-left: 12px;
+            border-left: 4px solid #475569; /* Varsayılan renk */
+            transition: background-color 0.2s ease-in-out;
+        }
+        .log-line:hover { background-color: rgba(255, 255, 255, 0.05); }
+
+        /* Renklendirme */
+        .log-line.error { border-left-color: #ef4444; color: #f87171; }
+        .log-line.warn { border-left-color: #f59e0b; color: #fbbf24; }
+        .log-line.success { border-left-color: #22c55e; color: #4ade80; }
+        .log-line.info { border-left-color: #3b82f6; color: #60a5fa; }
+
+        /* Animasyonlar */
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-200 flex items-center justify-center min-h-screen">
+<body class="bg-slate-900 text-slate-300 font-sans flex items-center justify-center min-h-screen">
 
-    <div class="w-full max-w-6xl mx-auto p-4 md:p-6">
-        <!-- 1. Bağlantı Ekranı -->
-        <div id="connection-screen" class="max-w-md mx-auto">
-            <div class="bg-gray-800 rounded-xl shadow-lg p-6 md:p-8 border border-gray-700">
-                <div class="text-center mb-6">
-                    <i class="fas fa-server text-4xl text-blue-400 mb-3"></i>
-                    <h1 class="text-2xl font-bold text-white">Sunucuya Bağlan</h1>
-                    <p class="text-gray-400 mt-1">İzlemek istediğiniz sunucunun SSH bilgilerini girin.</p>
-                </div>
-                <form id="connect-form">
-                    <div class="mb-4">
-                        <label for="ip" class="block text-sm font-medium text-gray-300 mb-2">Sunucu IP Adresi</label>
-                        <input type="text" id="ip" name="ip" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="192.168.1.1" required>
-                    </div>
-                    <div class="mb-4">
-                        <label for="user" class="block text-sm font-medium text-gray-300 mb-2">Kullanıcı Adı</label>
-                        <input type="text" id="user" name="user" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="root" required>
-                    </div>
-                    <div class="mb-6">
-                        <label for="pass" class="block text-sm font-medium text-gray-300 mb-2">Parola</label>
-                        <input type="password" id="pass" name="pass" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                    </div>
-                    <button type="submit" id="connect-btn" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg btn hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
-                        <span id="connect-btn-text">Bağlan</span>
-                        <i id="connect-btn-spinner" class="fas fa-spinner fa-spin hidden"></i>
-                    </button>
-                </form>
-                <div id="error-message" class="mt-4 text-red-400 text-sm text-center"></div>
+    <div id="app" class="w-full max-w-6xl h-[90vh] flex flex-col bg-slate-800 shadow-2xl shadow-cyan-500/10 rounded-lg overflow-hidden">
+
+        <!-- Bağlantı Ekranı -->
+        <div id="connect-screen" class="flex flex-col items-center justify-center h-full p-8 fade-in">
+            <h1 class="text-4xl font-bold text-cyan-400 mb-2">Sunucu Log Gezgini</h1>
+            <p class="text-slate-400 mb-8">İzlemek istediğiniz sunucunun bilgilerini girin.</p>
+            <form id="connect-form" class="w-full max-w-sm space-y-4">
+                <input type="text" id="ip" placeholder="Sunucu IP Adresi" class="w-full p-3 bg-slate-700 rounded-md border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
+                <input type="text" id="user" placeholder="Kullanıcı Adı" class="w-full p-3 bg-slate-700 rounded-md border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
+                <input type="password" id="pass" placeholder="Parola" class="w-full p-3 bg-slate-700 rounded-md border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500" required>
+                <button type="submit" class="w-full p-3 bg-cyan-600 hover:bg-cyan-500 rounded-md font-bold text-white transition-all duration-300 transform hover:scale-105">
+                    <span id="connect-button-text">Bağlan</span>
+                    <span id="loading-spinner" class="hidden animate-spin">&#9696;</span>
+                </button>
+            </form>
+            <p id="connect-error" class="text-red-400 mt-4 h-5"></p>
+        </div>
+
+        <!-- Log Seçim Ekranı -->
+        <div id="log-select-screen" class="hidden flex flex-col h-full p-8 fade-in">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-3xl font-bold text-cyan-400">Dosya Gezgini</h2>
+                <button id="disconnect-btn-select" class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-md font-bold text-white transition-colors">Bağlantıyı Kes</button>
+            </div>
+            <p class="text-slate-400 mb-4">Sunucu: <span id="server-ip-select" class="font-mono text-cyan-300"></span></p>
+            <div class="bg-slate-900/50 rounded-md p-2 mb-4 font-mono text-sm text-slate-400">
+                Mevcut Dizin: <span id="current-path" class="text-cyan-300"></span>
+            </div>
+            <div id="log-list-container" class="flex-1 bg-slate-900/50 rounded-md p-4 overflow-y-auto">
+                <!-- Dosya ve klasör listesi buraya dinamik olarak eklenecek -->
             </div>
         </div>
 
-        <!-- 2. Log Seçim Ekranı -->
-        <div id="log-selection-screen" class="hidden">
-            <div class="bg-gray-800 rounded-xl shadow-lg p-6 md:p-8 border border-gray-700">
-                <div class="flex justify-between items-center mb-6">
+        <!-- Log Görüntüleyici Ekranı -->
+        <div id="log-viewer-screen" class="hidden flex flex-col h-full fade-in">
+            <header class="flex items-center justify-between p-4 bg-slate-900/50 border-b border-slate-700">
+                <div class="flex items-center gap-4">
+                    <button id="back-to-select-btn" class="px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded-md font-bold text-white transition-colors">&larr; Gezgine Dön</button>
                     <div>
-                        <h1 class="text-2xl font-bold text-white">Log Dosyaları</h1>
-                        <p class="text-gray-400 mt-1">İzlemek için bir log dosyası seçin.</p>
-                    </div>
-                    <button id="disconnect-btn-selection" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg btn hover:bg-red-700 text-sm">Bağlantıyı Kes</button>
-                </div>
-                <div id="log-list-container" class="max-h-96 overflow-y-auto pr-2">
-                    <ul id="log-list" class="space-y-2">
-                        <!-- Log dosyaları buraya dinamik olarak eklenecek -->
-                    </ul>
-                </div>
-            </div>
-        </div>
-
-        <!-- 3. Log Görüntüleyici Ekranı -->
-        <div id="log-viewer-screen" class="hidden h-[90vh] flex flex-col">
-            <div class="bg-gray-800 rounded-t-xl shadow-lg p-4 border-b border-gray-700 flex flex-wrap justify-between items-center gap-4">
-                <div class="flex items-center gap-3">
-                    <button id="back-to-selection-btn" class="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg btn hover:bg-gray-700"><i class="fas fa-arrow-left mr-2"></i>Geri</button>
-                    <div>
-                        <p class="text-xs text-gray-400">Sunucu: <span id="server-ip-display" class="font-semibold text-gray-200"></span></p>
-                        <p class="text-xs text-gray-400">İzlenen Dosya: <span id="log-file-display" class="font-semibold text-gray-200"></span></p>
+                        <p class="text-slate-400 text-sm">Sunucu: <span id="server-ip-viewer" class="font-mono text-cyan-300"></span></p>
+                        <p class="text-slate-200 font-bold">İzlenen Dosya: <span id="log-file-name" class="font-mono text-cyan-300"></span></p>
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
-                    <div class="relative">
-                        <i class="fas fa-search text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
-                        <input type="text" id="filter-input" placeholder="Loglarda ara..." class="bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64">
-                    </div>
-                    <button id="toggle-stream-btn" class="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg btn hover:bg-yellow-600" data-status="running">
-                        <i class="fas fa-pause mr-2"></i><span>Durdur</span>
-                    </button>
-                    <button id="disconnect-btn-viewer" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg btn hover:bg-red-700">Bağlantıyı Kes</button>
+                    <input type="text" id="filter-input" placeholder="Filtrele..." class="p-2 bg-slate-700 rounded-md border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                    <button id="pause-resume-btn" class="px-4 py-2 w-32 bg-amber-600 hover:bg-amber-500 rounded-md font-bold text-white transition-colors">Durdur</button>
+                    <button id="export-logs-btn" class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-md font-bold text-white transition-colors">Logları İndir</button>
+                    <button id="disconnect-btn-viewer" class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-md font-bold text-white transition-colors">Bağlantıyı Kes</button>
                 </div>
-            </div>
-            <div id="log-container" class="bg-gray-900 rounded-b-xl flex-grow overflow-y-auto p-4 font-mono text-sm leading-6">
-                <!-- Loglar buraya gelecek -->
-            </div>
+            </header>
+            <main id="log-container" class="flex-1 p-4 overflow-y-auto font-mono text-sm bg-slate-900">
+                <!-- Loglar buraya eklenecek -->
+            </main>
         </div>
     </div>
 
     <script>
-        const backendUrl = 'http://localhost:3000';
-
-        // Element Referansları
-        const screens = {
-            connection: document.getElementById('connection-screen'),
-            selection: document.getElementById('log-selection-screen'),
-            viewer: document.getElementById('log-viewer-screen'),
-        };
+        // DOM Elementleri
+        const connectScreen = document.getElementById('connect-screen');
+        const logSelectScreen = document.getElementById('log-select-screen');
+        const logViewerScreen = document.getElementById('log-viewer-screen');
         const connectForm = document.getElementById('connect-form');
-        const connectBtn = document.getElementById('connect-btn');
-        const connectBtnText = document.getElementById('connect-btn-text');
-        const connectBtnSpinner = document.getElementById('connect-btn-spinner');
-        const errorMessage = document.getElementById('error-message');
-        
-        const logList = document.getElementById('log-list');
+        const connectError = document.getElementById('connect-error');
+        const connectButtonText = document.getElementById('connect-button-text');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const serverIpSelect = document.getElementById('server-ip-select');
+        const serverIpViewer = document.getElementById('server-ip-viewer');
+        const currentPathSpan = document.getElementById('current-path');
+        const logFileName = document.getElementById('log-file-name');
+        const logListContainer = document.getElementById('log-list-container');
         const logContainer = document.getElementById('log-container');
         const filterInput = document.getElementById('filter-input');
-        const toggleStreamBtn = document.getElementById('toggle-stream-btn');
-        
-        const backToSelectionBtn = document.getElementById('back-to-selection-btn');
-        const disconnectBtnSelection = document.getElementById('disconnect-btn-selection');
+        const pauseResumeBtn = document.getElementById('pause-resume-btn');
+        const backToSelectBtn = document.getElementById('back-to-select-btn');
+        const disconnectBtnSelect = document.getElementById('disconnect-btn-select');
         const disconnectBtnViewer = document.getElementById('disconnect-btn-viewer');
+        const exportLogsBtn = document.getElementById('export-logs-btn');
 
-        const serverIpDisplay = document.getElementById('server-ip-display');
-        const logFileDisplay = document.getElementById('log-file-display');
+        // Backend URL'si
+        const apiUrl = 'xxx';
+        const wsUrl = 'xxx';
 
-        // Global Değişkenler
+        // Durum Değişkenleri
         let logSocket = null;
-        let isStreamPaused = false;
+        let isPaused = false;
+        let currentIp = '';
+        let currentPath = '/';
 
-        // --- YARDIMCI FONKSİYONLAR ---
+        // Fonksiyonlar
+        const showScreen = (screen) => {
+            connectScreen.classList.add('hidden');
+            logSelectScreen.classList.add('hidden');
+            logViewerScreen.classList.add('hidden');
+            screen.classList.remove('hidden');
+        };
 
-        function switchScreen(screenName) {
-            Object.values(screens).forEach(screen => screen.classList.add('hidden'));
-            if (screens[screenName]) {
-                screens[screenName].classList.remove('hidden');
-            }
-        }
-        
-        function showError(message) {
-            errorMessage.textContent = message;
-        }
+        const setLoading = (isLoading) => {
+            connectButtonText.classList.toggle('hidden', isLoading);
+            loadingSpinner.classList.toggle('hidden', !isLoading);
+            connectForm.querySelector('button').disabled = isLoading;
+        };
 
-        function setLoading(isLoading) {
-            connectBtn.disabled = isLoading;
-            connectBtnSpinner.classList.toggle('hidden', !isLoading);
-            connectBtnText.classList.toggle('hidden', isLoading);
-            connectBtnText.textContent = isLoading ? '' : 'Bağlan';
-        }
-
-        // --- API & WEBSOCKET İŞLEMLERİ ---
-
-        connectForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(connectForm);
-            const data = Object.fromEntries(formData.entries());
-            
-            showError('');
+        const handleConnect = async (event) => {
+            event.preventDefault();
             setLoading(true);
+            connectError.textContent = '';
+            
+            const ip = document.getElementById('ip').value;
+            const user = document.getElementById('user').value;
+            const pass = document.getElementById('pass').value;
+            currentIp = ip;
 
             try {
-                const response = await fetch(`${backendUrl}/connect`, {
+                const response = await fetch(`${apiUrl}/connect`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data),
+                    body: JSON.stringify({ ip, user, pass })
                 });
 
-                const result = await response.json();
-                if (!response.ok) {
-                    throw new Error(result.message || 'Bilinmeyen bir hata oluştu.');
-                }
-                
-                await fetchLogFiles();
-                serverIpDisplay.textContent = data.ip;
+                if (!response.ok) throw new Error(`Bağlantı hatası: ${response.statusText}`);
+                const data = await response.json();
 
+                if (data.success) {
+                    currentPath = '/';
+                    await renderBrowser(currentPath);
+                } else {
+                    throw new Error(data.message);
+                }
             } catch (error) {
-                showError(`Bağlanılamadı: ${error.message}`);
+                connectError.textContent = `Bağlanılamadı: ${error.message}`;
             } finally {
                 setLoading(false);
             }
-        });
+        };
 
-        async function fetchLogFiles() {
+        const renderBrowser = async (path) => {
+            currentPath = path;
+            logListContainer.innerHTML = `<div class="text-center text-slate-400">Yükleniyor...</div>`;
+            currentPathSpan.textContent = `/var/log${path === '/' ? '' : path}`;
+
             try {
-                const response = await fetch(`${backendUrl}/list-logs`);
-                const result = await response.json();
+                const response = await fetch(`${apiUrl}/browse`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: currentPath })
+                });
+                const data = await response.json();
 
-                if (!response.ok) {
-                    throw new Error(result.message || 'Log dosyaları alınamadı.');
-                }
+                if (!data.success) throw new Error(data.message);
+
+                logListContainer.innerHTML = '';
                 
-                logList.innerHTML = '';
-                if (result.files.length === 0) {
-                    logList.innerHTML = `<li class="text-gray-400">İzlenecek .log uzantılı dosya bulunamadı.</li>`;
-                } else {
-                    result.files.forEach(file => {
-                        const li = document.createElement('li');
-                        li.className = 'flex justify-between items-center bg-gray-700 p-3 rounded-lg';
-                        li.innerHTML = `
-                            <span class="font-mono text-blue-300"><i class="fas fa-file-alt mr-3 text-gray-400"></i>${file}</span>
-                            <button data-filename="${file}" class="watch-btn bg-green-600 text-white font-bold py-1 px-3 rounded-md btn text-sm hover:bg-green-700">İzle</button>
-                        `;
-                        logList.appendChild(li);
-                    });
+                if (currentPath !== '/') {
+                    const pathParts = currentPath.split('/').filter(p => p.length > 0);
+                    pathParts.pop();
+                    const parentPath = '/' + pathParts.join('/') + (pathParts.length > 0 ? '/' : '');
+                    logListContainer.innerHTML += createItemElement({ name: '../', type: 'directory' }, parentPath);
                 }
-                switchScreen('selection');
+
+                data.items.sort((a, b) => {
+                    if (a.type === 'directory' && b.type !== 'directory') return -1;
+                    if (a.type !== 'directory' && b.type === 'directory') return 1;
+                    return a.name.localeCompare(b.name);
+                });
+
+                data.items.forEach(item => {
+                    logListContainer.innerHTML += createItemElement(item);
+                });
+
+                serverIpSelect.textContent = currentIp;
+                showScreen(logSelectScreen);
 
             } catch (error) {
-                showError(`Hata: ${error.message}`);
-                switchScreen('connection');
+                logListContainer.innerHTML = `<div class="text-center text-red-400">Hata: ${error.message}</div>`;
             }
-        }
-        
-        logList.addEventListener('click', (e) => {
-            if (e.target.classList.contains('watch-btn')) {
-                const logFile = e.target.dataset.filename;
-                startLogStream(logFile);
+        };
+
+        const createItemElement = (item, customPath = null) => {
+            const isDirectory = item.type === 'directory';
+            const itemName = item.name;
+            
+            const newPath = customPath !== null ? customPath : `${currentPath}${itemName}`;
+            
+            // DÜZELTİLDİ: Hatalı yol birleştirmesi giderildi.
+            // Artık her zaman doğru sayıda '/' karakteri olacak.
+            const fullLogPath = `/var/log${currentPath}${itemName}`;
+            
+            const icon = isDirectory
+                ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>`
+                : `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>`;
+
+            const actionButton = isDirectory
+                ? ''
+                : `<button data-file="${fullLogPath}" class="watch-btn px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-md text-sm">İzle</button>`;
+            
+            const itemClass = isDirectory ? 'cursor-pointer' : '';
+
+            return `
+                <div data-path="${newPath}" data-type="${item.type}" class="browser-item flex justify-between items-center p-3 mb-2 bg-slate-800 rounded-md hover:bg-slate-700 transition-colors ${itemClass}">
+                    <div class="flex items-center gap-3">
+                        ${icon}
+                        <span class="font-mono text-slate-300">${itemName}</span>
+                    </div>
+                    ${actionButton}
+                </div>
+            `;
+        };
+
+        const startLogStream = (filePath) => {
+            logContainer.innerHTML = '';
+            isPaused = false;
+            pauseResumeBtn.textContent = 'Durdur';
+            pauseResumeBtn.classList.remove('bg-green-600', 'hover:bg-green-500');
+            pauseResumeBtn.classList.add('bg-amber-600', 'hover:bg-amber-500');
+
+            serverIpViewer.textContent = currentIp;
+            logFileName.textContent = filePath;
+            showScreen(logViewerScreen);
+            
+            if (logSocket) {
+                logSocket.close();
             }
-        });
 
-        function startLogStream(logFile) {
-            logContainer.innerHTML = `<div class="text-yellow-400">"${logFile}" için log akışı bekleniyor...</div>`;
-            logFileDisplay.textContent = logFile;
-            isStreamPaused = false;
-            updateToggleStreamButton();
-            switchScreen('viewer');
-
-            if (logSocket) logSocket.close();
-
-            logSocket = new WebSocket(`ws://${backendUrl.replace('http://', '')}`);
+            logSocket = new WebSocket(wsUrl);
 
             logSocket.onopen = () => {
-                console.log('WebSocket bağlantısı kuruldu.');
-                logSocket.send(logFile);
+                console.log('WebSocket bağlantısı açıldı.');
+                logSocket.send(filePath);
             };
 
             logSocket.onmessage = (event) => {
-                if (!isStreamPaused) {
+                if (!isPaused) {
                     appendLog(event.data);
                 }
             };
 
             logSocket.onerror = (error) => {
                 console.error('WebSocket Hatası:', error);
-                appendLog(`\n--- HATA: WebSocket bağlantı hatası. ---`, 'error');
+                appendLog(`[SYSTEM] WebSocket bağlantı hatası.`);
             };
-            
+
             logSocket.onclose = () => {
-                console.log('WebSocket bağlantısı kapandı.');
-                if(!isStreamPaused) {
-                   appendLog(`\n--- UYARI: Sunucu ile log akış bağlantısı kesildi. ---`, 'warn');
+                console.log('WebSocket bağlantısı kapatıldı.');
+                if(document.body.contains(logViewerScreen) && !logViewerScreen.classList.contains('hidden')) {
+                   appendLog('[SYSTEM] Sunucu ile bağlantı kesildi.');
                 }
             };
-        }
+        };
+        
+        const appendLog = (logText) => {
+            const lines = logText.split('\n');
+            lines.forEach(line => {
+                if(line.trim() === '') return;
 
-        async function disconnectFromServer() {
+                const isScrolledToBottom = logContainer.scrollHeight - logContainer.clientHeight <= logContainer.scrollTop + 20;
+
+                const logLine = document.createElement('div');
+                logLine.className = 'log-line whitespace-pre-wrap';
+                logLine.textContent = line;
+                
+                const lowerLine = line.toLowerCase();
+                if (lowerLine.includes('error') || lowerLine.includes('failed') || lowerLine.includes('failure')) {
+                    logLine.classList.add('error');
+                } else if (lowerLine.includes('warn') || lowerLine.includes('warning')) {
+                    logLine.classList.add('warn');
+                } else if (lowerLine.includes('success') || lowerLine.includes('ok')) {
+                    logLine.classList.add('success');
+                } else if (lowerLine.includes('info')) {
+                    logLine.classList.add('info');
+                }
+
+                logContainer.appendChild(logLine);
+
+                if (isScrolledToBottom) {
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                }
+
+                applyFilter();
+            });
+        };
+
+        const applyFilter = () => {
+            const filterText = filterInput.value.toLowerCase();
+            const logLines = logContainer.getElementsByClassName('log-line');
+            for (let line of logLines) {
+                if (line.textContent.toLowerCase().includes(filterText)) {
+                    line.style.display = 'block';
+                } else {
+                    line.style.display = 'none';
+                }
+            }
+        };
+
+        const togglePause = () => {
+            isPaused = !isPaused;
+            if (isPaused) {
+                pauseResumeBtn.textContent = 'Devam Et';
+                pauseResumeBtn.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+                pauseResumeBtn.classList.add('bg-green-600', 'hover:bg-green-500');
+                appendLog('[SYSTEM] Log akışı durduruldu.');
+            } else {
+                pauseResumeBtn.textContent = 'Durdur';
+                pauseResumeBtn.classList.remove('bg-green-600', 'hover:bg-green-500');
+                pauseResumeBtn.classList.add('bg-amber-600', 'hover:bg-amber-500');
+                appendLog('[SYSTEM] Log akışı devam ediyor...');
+            }
+        };
+
+        const handleDisconnect = async () => {
             if (logSocket) {
                 logSocket.close();
                 logSocket = null;
             }
             try {
-                await fetch(`${backendUrl}/disconnect`, { method: 'POST' });
+                await fetch(`${apiUrl}/disconnect`, { method: 'POST' });
             } catch (error) {
-                console.error('Disconnect hatası:', error.message);
+                console.error("Disconnect hatası:", error);
             } finally {
-                switchScreen('connection');
-                connectForm.reset();
-                showError('');
-            }
-        }
-
-        disconnectBtnSelection.addEventListener('click', disconnectFromServer);
-        disconnectBtnViewer.addEventListener('click', disconnectFromServer);
-        
-        backToSelectionBtn.addEventListener('click', () => {
-            if (logSocket) {
-                logSocket.close();
-                logSocket = null;
-            }
-            switchScreen('selection');
-        });
-
-        // --- LOG GÖRÜNTÜLEYİCİ İŞLEVLERİ ---
-
-        function appendLog(logText, type) {
-            if (logContainer.children.length === 1 && logContainer.firstChild.textContent.includes('bekleniyor')) {
+                showScreen(connectScreen);
+                currentIp = '';
                 logContainer.innerHTML = '';
             }
+        };
+        
+        const exportLogs = () => {
+            const logLines = logContainer.getElementsByClassName('log-line');
+            let logContent = '';
             
-            const lines = logText.split('\n').filter(Boolean);
-            lines.forEach(line => {
-                const logLine = document.createElement('div');
-                logLine.className = 'log-line';
-                logLine.textContent = line;
-                
-                // Renklendirme mantığı burada, JavaScript'te değişiklik yok.
-                // Sadece CSS'i güncelledik.
-                const lowerLine = line.toLowerCase();
-                if (type === 'error' || lowerLine.includes('error') || lowerLine.includes('failed')) {
-                    logLine.classList.add('error');
-                } else if (type === 'warn' || lowerLine.includes('warn')) {
-                    logLine.classList.add('warn');
-                } else if (lowerLine.includes('info')) {
-                    logLine.classList.add('info');
-                } else if (lowerLine.includes('success') || lowerLine.includes('ok')) {
-                    logLine.classList.add('success');
-                } else if (lowerLine.includes('debug')) {
-                    logLine.classList.add('debug');
+            for(let line of logLines) {
+                if (line.style.display !== 'none') {
+                    logContent += line.textContent + '\n';
                 }
-                
-                logContainer.appendChild(logLine);
-            });
+            }
+            
+            if (logContent.trim() === '') {
+                connectError.textContent = 'İndirilecek log bulunamadı.';
+                setTimeout(() => connectError.textContent = '', 3000);
+                return;
+            }
 
-            logContainer.scrollTop = logContainer.scrollHeight;
-        }
+            const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            
+            a.href = url;
+            const date = new Date();
+            const dateString = `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+            const fileName = `logs_${logFileName.textContent.replace(/[\/\\]/g, '_')}_${dateString}.txt`;
+            a.download = fileName;
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
 
-        filterInput.addEventListener('input', () => {
-            const filterText = filterInput.value.toLowerCase();
-            const lines = logContainer.getElementsByClassName('log-line');
-            for (let line of lines) {
-                if (line.textContent.toLowerCase().includes(filterText)) {
-                    line.style.display = '';
-                } else {
-                    line.style.display = 'none';
+        // Olay Dinleyicileri
+        connectForm.addEventListener('submit', handleConnect);
+        
+        logListContainer.addEventListener('click', (event) => {
+            const target = event.target;
+            const watchBtn = target.closest('.watch-btn');
+            const browserItem = target.closest('.browser-item');
+
+            if (watchBtn) {
+                const filePath = watchBtn.dataset.file;
+                startLogStream(filePath);
+            } else if (browserItem) {
+                const type = browserItem.dataset.type;
+                if (type === 'directory') {
+                    const path = browserItem.dataset.path;
+                    renderBrowser(path);
                 }
             }
         });
 
-        function updateToggleStreamButton() {
-            const icon = toggleStreamBtn.querySelector('i');
-            const text = toggleStreamBtn.querySelector('span');
-            if (isStreamPaused) {
-                toggleStreamBtn.classList.remove('bg-yellow-500', 'hover:bg-yellow-600');
-                toggleStreamBtn.classList.add('bg-green-500', 'hover:bg-green-600');
-                icon.className = 'fas fa-play mr-2';
-                text.textContent = 'Başlat';
-                toggleStreamBtn.dataset.status = 'paused';
-            } else {
-                toggleStreamBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
-                toggleStreamBtn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
-                icon.className = 'fas fa-pause mr-2';
-                text.textContent = 'Durdur';
-                toggleStreamBtn.dataset.status = 'running';
-            }
-        }
-
-        toggleStreamBtn.addEventListener('click', () => {
-            isStreamPaused = !isStreamPaused;
-            updateToggleStreamButton();
+        filterInput.addEventListener('input', applyFilter);
+        pauseResumeBtn.addEventListener('click', togglePause);
+        backToSelectBtn.addEventListener('click', () => {
+             if (logSocket) { logSocket.close(); logSocket = null; }
+            showScreen(logSelectScreen);
         });
+        disconnectBtnSelect.addEventListener('click', handleDisconnect);
+        disconnectBtnViewer.addEventListener('click', handleDisconnect);
+        exportLogsBtn.addEventListener('click', exportLogs);
 
-        switchScreen('connection');
     </script>
+
 </body>
 </html>
 
