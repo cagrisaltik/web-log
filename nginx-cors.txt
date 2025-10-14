@@ -1,0 +1,58 @@
+# Bu dosya,  alan adından gelen istekleri yönetir.
+# Hem HTTP'yi HTTPS'e yönlendirir hem de HTTPS isteklerini Node.js uygulamanıza iletir.
+# CORS ve WebSocket sorunlarını çözmek için yapılandırılmıştır.
+
+# 1. BÖLÜM: HTTP isteklerini (port 80) HTTPS'e (port 443) yönlendirme
+# Bu, tüm güvensiz bağlantıların güvenli hale getirilmesini sağlar.
+server {
+    listen 80;
+    server_name xxxxx.com;
+
+    # Gelen tüm istekleri kalıcı olarak (301) HTTPS versiyonuna yönlendir.
+    return 301 https://$host$request_uri;
+}
+
+# 2. BÖLÜM: HTTPS isteklerini (port 443) yönetme ve Node.js'e yönlendirme
+server {
+    # Port 443'ü dinle ve SSL/TLS'i aktif et.
+    listen 443 ssl;
+    server_name xx;
+
+    # --- SSL SERTİFİKA AYARLARI ---
+    # Certbot'un sizin için oluşturduğu sertifika dosyalarının yollarını buraya yazmalısınız.
+    # Bu yollar genellikle /etc/letsencrypt/live/alan_adiniz/ şeklindedir.
+    # Örnek:
+    # ssl_certificate /etc/letsencrypt/live/xx/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/xx/privkey.pem;
+
+    # --- ANA YAPI VE REVERSE PROXY ---
+    location / {
+        # Tarayıcının ön kontrol (preflight) isteğini burada yakalıyoruz.
+        if ($request_method = 'OPTIONS') {
+            # Sadece sizin frontend'inizden gelen isteklere izin veriyoruz.
+            add_header 'Access-Control-Allow-Origin' 'xxx' always;
+            # İzin verilen metodları (GET, POST, vb.) belirtiyoruz.
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+            # Tarayıcının göndermesine izin verilen başlıkları belirtiyoruz.
+            add_header 'Access-Control-Allow-Headers' 'Content-Type' always;
+            # Bu ön kontrolün ne kadar süre geçerli olacağını belirtiyoruz.
+            add_header 'Access-Control-Max-Age' 172800;
+            # Başarılı ve boş bir cevapla (204 No Content) isteği sonlandırıyoruz.
+            return 204;
+        }
+
+        # Normal (POST, GET vb.) istekler için de CORS başlığını ekliyoruz.
+        add_header 'Access-Control-Allow-Origin' 'xxxx' always;
+
+        # İsteği localhost:3000'de çalışan Node.js uygulamamıza yönlendiriyoruz.
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        
+        # WebSocket bağlantılarının doğru çalışması için gerekli ayarlar.
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
