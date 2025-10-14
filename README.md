@@ -77,9 +77,19 @@ node server.js
 
 Sunucu varsayılan olarak http://localhost:3000 adresinde çalışmaya başlayacaktır.
 
+Backend'i farklı bir sunucuda çalıştırıyor iseniz; Öncelikle CORS ve yönlendirme için ilgili sunucuya Nginx kurulumu sağlamanızı ve repo'da bulunan config dosyasını yüklemenizi öneririz. 
+Config dosyasını yüklemeden önce xxx olan yerleri backend'in çalıştığı sunucuya verdiğiniz FQDN ile değiştirmeniz gerekmekte. 
+
+sudo nginx -t 
+sudo systemctl reload nginx 
+
+Komutları ile config'i geçerli kılmanız gerekmekte. 
+
+Bu işlemlerden sonra yalnızca frontend tarafında xxx olan yerlere Nginx tarafında verdiğiniz FQDN'i yazmanız yeterli olacaktır. 
+
 Frontend Arayüzünü Açın:
 
-Projenin ana klasöründe bulunan log_monitor.html dosyasına çift tıklayarak web tarayıcınızda açın.
+Projenin ana klasöründe bulunan index.html dosyasına çift tıklayarak web tarayıcınızda açın.
 
 </details>
 
