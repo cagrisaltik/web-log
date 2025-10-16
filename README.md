@@ -1,111 +1,163 @@
+<div align="center">
 
-<p align="center">
-<h1 style="border-bottom: none; font-weight: bold;">Sunucu Log Görüntüleyici</h1>
-<p align="center">
-<p><strong>Web tarayıcınız üzerinden sunucu loglarınıza gerçek zamanlı olarak erişin ve izleyin.</strong></p>
+<img src="https://www.google.com/search?q=https://i.imgur.com/vH7a6dJ.png" alt="Proje ikonu" width="120">
 
+Sunucu Log Yöneticisi
 
+Web Tabanlı, Gerçek Zamanlı ve Etkileşimli SSH Log İzleme Platformu
 
-<p align="center">
-<em>Login Ekranı!</em>
-
-<img src="https://i.hizliresim.com/4dnu8kz.png" alt="Proje Arayüzü" style="border-radius: 4px;">
-
-
-
-
-<p align="center">
-<em>Dashboard Ekranı!</em>
-<img src="https://i.hizliresim.com/aqi5zv8.png" alt="Proje Arayüzü" style="border-radius: 4px;">
-
-<p align="center">
-<em>Log Ekranı!</em>
-<img src="https://i.hizliresim.com/3w9k5ag.png" alt="Proje Arayüzü" style="border-radius: 4px;">
+<p>
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/S%C3%BCr%C3%BCm-v1.4.0-blue.svg" alt="Sürüm">
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Lisans-MIT-green.svg" alt="Lisans">
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Backend-Node.js-yellowgreen" alt="Backend">
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Frontend-HTML/JS-orange" alt="Frontend">
 </p>
 
-🎯 Proje Hakkında
-Bu araç, sunucu loglarını sürekli terminalden takip etme zahmetini ortadan kaldırmak için tasarlandı. Sunucu Log Görüntüleyici, SSH bilgileriyle sunucunuza güvenli bir şekilde bağlanır ve seçtiğiniz log dosyalarını web tarayıcınız üzerinden canlı olarak izlemenize olanak tanır. Akıllı renklendirme, anlık filtreleme ve akış kontrolü gibi özellikler sayesinde log analizi artık çok daha kolay ve verimli.
+</div>
+
+🌟 Proje Hakkında
+
+Sunucu Log Yöneticisi, sunucularınızdaki log dosyalarını bir web arayüzü üzerinden canlı olarak izlemenizi, yönetmenizi ve analiz etmenizi sağlayan modern bir araçtır. Bu proje, sık kullandığınız sunucuları kaydedebileceğiniz kalıcı bir yönetim paneli sunarak, her seferinde bağlantı bilgilerini girme zahmetini ortadan kaldırır. SSH üzerinden güvenli bir şekilde sunucularınıza bağlanır, dosya sisteminde gezinmenize olanak tanır ve seçtiğiniz herhangi bir log dosyasını gerçek zamanlı olarak ekranınıza akıtır.
 
 ✨ Temel Özellikler
-🔒 Güvenli SSH Bağlantısı: Standart SSH2 protokolü ile sunucularınıza güvenli bağlantı.
 
-⚡ Gerçek Zamanlı Akış: WebSocket ile loglar oluştuğu anda ekranınızda.
+🧠 Sunucu Yönetim Paneli: Sık kullandığınız sunucuları kaydedin, silin ve tek tıkla bağlanın.
 
-📂 Dinamik Dosya Seçimi: Sunucudaki .log dosyalarını anında listeleyin ve seçin.
+🔒 Güvenli Veritabanı: Sunucu bilgileri Google Firestore üzerinde saklanır ve parolalar AES-256 ile şifrelenir.
 
-🎨 Akıllı Renklendirme: error, warn, info gibi anahtar kelimelerle logları otomatik renklendirme.
+📂 Etkileşimli Dosya Gezgini: /var/log ve alt dizinlerinde gezerek izlemek istediğiniz log dosyasını kolayca bulun.
 
-🔍 Canlı Filtreleme: Log akışı devam ederken arama yaparak anında filtreleyin.
+⏳ Geçmiş Logları Yükleme: Canlı akışa geçmeden önce log dosyasının son 200 satırını anında görüntüleyin.
 
-⏯️ Akış Kontrolü: Tek tuşla log akışını durdurun ve yeniden başlatın.
+⚡ Canlı Log Akışı: tail -f komutunun gücünü, WebSocket üzerinden anlık olarak web arayüzüne taşır.
 
-📱 Modern ve Duyarlı Arayüz: Tailwind CSS ile tüm cihazlarda harika görünen temiz arayüz.
+🔍 Akıllı Filtreleme ve Vurgulama: Aradığınız kelimeleri log akışı içinde anlık olarak renkli bir şekilde vurgulayın.
 
-🛠️ Kullanılan Teknolojiler
-<p align="center">
-<a href="https://nodejs.org/" target="_blank"><img src="[https://www.google.com/search?q=https://img.shields.io/badge/Node.js-339933%3Fstyle%3Dfor-the-badge%26logo%3Dnodedotjs%26logoColor%3Dwhite](https://www.svgrepo.com/show/354119/nodejs-icon.svg)" alt="Node.js"></a>
-<a href="https://expressjs.com/" target="_blank"><img src="https://www.google.com/search?q=https://img.shields.io/badge/Express.js-000000%3Fstyle%3Dfor-the-badge%26logo%3Dexpress%26logoColor%3Dwhite" alt="Express.js"></a>
-<a href="https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API" target="_blank"><img src="https://www.google.com/search?q=https://img.shields.io/badge/WebSocket-010101%3Fstyle%3Dfor-the-badge%26logo%3Dwebsocket%26logoColor%3Dwhite" alt="WebSocket"></a>
-<a href="https://tailwindcss.com/" target="_blank"><img src="https://www.google.com/search?q=https://img.shields.io/badge/Tailwind_CSS-38B2AC%3Fstyle%3Dfor-the-badge%26logo%3Dtailwind-css%26logoColor%3Dwhite" alt="Tailwind CSS"></a>
-<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript" target="_blank"><img src="https://www.google.com/search?q=https://img.shields.io/badge/JavaScript-F7DF1E%3Fstyle%3Dfor-the-badge%26logo%3Djavascript%26logoColor%3Dblack" alt="JavaScript"></a>
-</p>
+📱 Tamamen Duyarlı (Responsive) Arayüz: Telefon, tablet ve masaüstü cihazlarda sorunsuz bir kullanıcı deneyimi sunar.
 
-⚙️ Kurulum ve Başlatma
-Gereksinimler
-Node.js (v16 veya üstü)
+🎨 Renklendirilmiş Loglar: error, warn, info gibi anahtar kelimelere göre log satırlarını otomatik olarak renklendirir.
 
-npm (Node.js ile birlikte gelir)
+🚀 Kurulum
 
-<details>
-<summary><strong>Kurulum Adımlarını Görmek İçin Tıklayın</strong></summary>
+Bu projeyi kendi sunucunuzda çalıştırmak için aşağıdaki adımları izleyin.
+
+Ön Gereksinimler
+
+Node.js: v16 veya üzeri.
+
+npm: Node.js ile birlikte gelir.
+
+Git: Projeyi klonlamak için.
+
+Nginx: Reverse proxy ve SSL için şiddetle tavsiye edilir.
+
+Adım 1: Firebase Kurulumu
+
+Uygulamanın sunucu bilgilerini saklayabilmesi için bir Firestore veritabanına ihtiyacı vardır.
+
+Firebase Console'a gidin ve yeni bir proje oluşturun.
+
+Proje panelinden Firestore Database'i seçin ve test modunda yeni bir veritabanı oluşturun.
+
+Proje Ayarları ⚙️ > Hizmet Hesapları sekmesine gidin.
+
+"Yeni özel anahtar oluştur" butonuna tıklayarak serviceAccountKey.json dosyasını indirin. Bu dosya çok önemlidir ve gizli tutulmalıdır.
+
+Adım 2: Backend Kurulumu
 
 Projeyi Klonlayın:
 
-git clone [https://github.com/cagrisaltik/web-log.git](https://github.com/cagrisaltik/web-log)
+git clone [https://github.com/KULLANICI-ADINIZ/REPO-ADINIZ.git](https://github.com/KULLANICI-ADINIZ/REPO-ADINIZ.git)
+cd REPO-ADINIZ
 
-Backend Klasörüne Gidin:
 
-cd web-log
+Anahtar Dosyasını Taşıyın:
+Önceki adımda indirdiğiniz serviceAccountKey.json dosyasını projenin log-monitor-backend klasörünün içine taşıyın.
 
-Gerekli NPM Paketlerini Yükleyin:
+Bağımlılıkları Yükleyin:
+log-monitor-backend klasörünün içindeyken aşağıdaki komutu çalıştırın:
 
 npm install
 
-Backend Sunucusunu Başlatın:
+
+Bu komut, package.json dosyasında listelenen express, ssh2, ws, firebase-admin gibi tüm gerekli kütüphaneleri otomatik olarak yükleyecektir.
+
+Adım 3: Reverse Proxy (Nginx) Kurulumu
+
+Backend'inize HTTPS üzerinden güvenli bir şekilde erişmek ve CORS hatalarını önlemek için Nginx kurmanız gerekmektedir.
+
+Nginx'i Yükleyin:
+
+sudo apt update
+sudo apt install nginx
+
+
+Alan Adı ve SSL:
+Backend'iniz için bir subdomain oluşturun (örn: backend.alanadiniz.com) ve bu adrese bir SSL sertifikası alın. (Let's Encrypt ve Certbot tavsiye edilir).
+
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d backend.alanadiniz.com
+
+
+Nginx'i Yapılandırın:
+sudo nano /etc/nginx/sites-available/default (veya alan adınıza özel dosya) komutuyla Nginx yapılandırma dosyanızı açın ve ilgili server { ... } bloğunu aşağıdakiyle değiştirin:
+
+server {
+    server_name backend.alanadiniz.com; # Kendi alan adınızı yazın
+
+    location / {
+        # OPTIONS (preflight) istekleri için CORS yönetimi
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '[https://frontend-alan-adiniz.com](https://frontend-alan-adiniz.com)'; # Frontend adresinizi yazın
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, DELETE, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Content-Type' always;
+            add_header 'Access-Control-Max-Age' 172800;
+            return 204;
+        }
+
+        # Normal istekler için CORS başlığı
+        add_header 'Access-Control-Allow-Origin' '[https://frontend-alan-adiniz.com](https://frontend-alan-adiniz.com)' always;
+
+        # İsteği Node.js uygulamasına yönlendirme
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        # WebSocket bağlantısı için gerekli ayarlar
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Certbot tarafından eklenen SSL ayarları
+    listen 443 ssl; 
+    ssl_certificate /etc/letsencrypt/live/[backend.alanadiniz.com/fullchain.pem](https://backend.alanadiniz.com/fullchain.pem); 
+    ssl_certificate_key /etc/letsencrypt/live/[backend.alanadiniz.com/privkey.pem](https://backend.alanadiniz.com/privkey.pem); 
+    include /etc/letsencrypt/options-ssl-nginx.conf; 
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; 
+}
+
+
+Nginx'i Yeniden Başlatın:
+
+sudo nginx -t && sudo systemctl reload nginx
+
+
+Adım 4: Frontend Kurulumu
+
+log_monitor.html dosyasını web sunucunuzun (frontend'in yayınlandığı yer) kök dizinine taşıyın.
+
+Dosyayı bir metin editörüyle açın ve en üstteki <script> bölümünde yer alan aşağıdaki değişkenleri, Adım 3'te yapılandırdığınız backend adresinizle güncelleyin:
+
+// Backend URL'si
+const apiUrl = '[https://backend.alanadiniz.com](https://backend.alanadiniz.com)';
+const wsUrl = 'wss://backend.alanadiniz.com';
+
+
+Adım 5: Uygulamayı Başlatma
+
+Backend'i Başlatın:
+log-monitor-backend klasörünün içindeyken:
 
 node server.js
-
-Sunucu varsayılan olarak http://localhost:3000 adresinde çalışmaya başlayacaktır.
-
-Backend'i farklı bir sunucuda çalıştırıyor iseniz; Öncelikle CORS ve yönlendirme için ilgili sunucuya Nginx kurulumu sağlamanızı ve repo'da bulunan config dosyasını yüklemenizi öneririz. 
-Config dosyasını yüklemeden önce xxx olan yerleri backend'in çalıştığı sunucuya verdiğiniz FQDN ile değiştirmeniz gerekmekte. 
-
-sudo nginx -t 
-sudo systemctl reload nginx 
-
-Komutları ile config'i geçerli kılmanız gerekmekte. 
-
-Bu işlemlerden sonra yalnızca frontend tarafında xxx olan yerlere Nginx tarafında verdiğiniz FQDN'i yazmanız yeterli olacaktır. 
-
-Frontend Arayüzünü Açın:
-
-Projenin ana klasöründe bulunan index.html dosyasına çift tıklayarak web tarayıcınızda açın.
-
-</details>
-
-📖 Kullanım
-Uygulamayı tarayıcıda açın.
-
-Loglarını izlemek istediğiniz sunucunun IP Adresi, Kullanıcı Adı ve Parolasını girin.
-
-"Bağlan" butonuna tıklayın.
-
-Bağlantı başarılı olduğunda, sunucudaki log dosyalarının listesi karşınıza gelecektir.
-
-İzlemek istediğiniz dosyanın yanındaki "İzle" butonuna tıklayın ve logların akışını izleyin!
-
-🤝 Katkıda Bulunma
-Projeye katkıda bulunmak isterseniz, lütfen bir "pull request" açın veya "issue" oluşturun. Tüm katkılara açığız!
-
-📄 Lisans
-Bu proje MIT Lisansı ile lisanslanmıştır.
