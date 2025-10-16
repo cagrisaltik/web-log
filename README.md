@@ -1,18 +1,15 @@
 <div align="center">
-
-<img src="https://www.google.com/search?q=https://i.imgur.com/vH7a6dJ.png" alt="Proje ikonu" width="120">
-
-Sunucu Log Yöneticisi
-
-Web Tabanlı, Gerçek Zamanlı ve Etkileşimli SSH Log İzleme Platformu
-
+<img src="https://www.google.com/search?q=https://i.imgur.com/vH7a6dJ.png" alt="Proje ikonu" width="150">
+<h1>Sunucu Log Yöneticisi</h1>
+<p>
+<b>Web tabanlı, gerçek zamanlı ve etkileşimli SSH log izleme platformu</b>
+</p>
 <p>
 <img src="https://www.google.com/search?q=https://img.shields.io/badge/S%C3%BCr%C3%BCm-v1.4.0-blue.svg" alt="Sürüm">
 <img src="https://www.google.com/search?q=https://img.shields.io/badge/Lisans-MIT-green.svg" alt="Lisans">
 <img src="https://www.google.com/search?q=https://img.shields.io/badge/Backend-Node.js-yellowgreen" alt="Backend">
-<img src="https://www.google.com/search?q=https://img.shields.io/badge/Frontend-HTML/JS-orange" alt="Frontend">
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Frontend-Vanilla_JS-orange" alt="Frontend">
 </p>
-
 </div>
 
 🌟 Proje Hakkında
@@ -37,23 +34,31 @@ Sunucu Log Yöneticisi, sunucularınızdaki log dosyalarını bir web arayüzü 
 
 🎨 Renklendirilmiş Loglar: error, warn, info gibi anahtar kelimelere göre log satırlarını otomatik olarak renklendirir.
 
-🚀 Kurulum
+🛠️ Teknoloji Yığını
 
-Bu projeyi kendi sunucunuzda çalıştırmak için aşağıdaki adımları izleyin.
+Backend: Node.js, Express.js, WebSocket (ws), SSH2, Firebase Admin
+
+Frontend: HTML5, Tailwind CSS, Vanilla JavaScript
+
+Veritabanı: Google Firestore
+
+Proxy & SSL: Nginx, Let's Encrypt
+
+🚀 Kurulum Kılavuzu
+
+Bu projeyi kendi altyapınızda çalıştırmak için aşağıdaki adımları dikkatlice izleyin.
 
 Ön Gereksinimler
 
-Node.js: v16 veya üzeri.
+Node.js: v16 veya daha güncel bir sürüm.
 
-npm: Node.js ile birlikte gelir.
+Nginx: Backend için reverse proxy olarak kullanılacak.
 
-Git: Projeyi klonlamak için.
+Alan Adları: Backend ve frontend için ayrı alan adları veya subdomain'ler. (Örn: backend.alanadiniz.com, logs.alanadiniz.com)
 
-Nginx: Reverse proxy ve SSL için şiddetle tavsiye edilir.
+Adım 1: Firebase Projesi Oluşturma
 
-Adım 1: Firebase Kurulumu
-
-Uygulamanın sunucu bilgilerini saklayabilmesi için bir Firestore veritabanına ihtiyacı vardır.
+Uygulamanın sunucu bilgilerini saklayabilmesi için bir Firestore veritabanına ihtiyacımız var.
 
 Firebase Console'a gidin ve yeni bir proje oluşturun.
 
@@ -61,70 +66,63 @@ Proje panelinden Firestore Database'i seçin ve test modunda yeni bir veritaban�
 
 Proje Ayarları ⚙️ > Hizmet Hesapları sekmesine gidin.
 
-"Yeni özel anahtar oluştur" butonuna tıklayarak serviceAccountKey.json dosyasını indirin. Bu dosya çok önemlidir ve gizli tutulmalıdır.
+"Yeni özel anahtar oluştur" butonuna tıklayarak serviceAccountKey.json dosyasını indirin. Bu dosya, backend'inizin kimliğini doğrulamak için kullanılacak ve gizli tutulmalıdır.
 
 Adım 2: Backend Kurulumu
 
-Projeyi Klonlayın:
+Projeyi Klonlayın ve Dizine Girin:
 
 git clone [https://github.com/KULLANICI-ADINIZ/REPO-ADINIZ.git](https://github.com/KULLANICI-ADINIZ/REPO-ADINIZ.git)
-cd REPO-ADINIZ
+cd REPO-ADINIZ/log-monitor-backend
 
 
 Anahtar Dosyasını Taşıyın:
-Önceki adımda indirdiğiniz serviceAccountKey.json dosyasını projenin log-monitor-backend klasörünün içine taşıyın.
+Bir önceki adımda indirdiğiniz serviceAccountKey.json dosyasını şu an içinde bulunduğunuz log-monitor-backend klasörüne taşıyın.
 
 Bağımlılıkları Yükleyin:
-log-monitor-backend klasörünün içindeyken aşağıdaki komutu çalıştırın:
+npm, package.json dosyasını okuyarak gerekli tüm kütüphaneleri yükleyecektir.
 
 npm install
 
 
-Bu komut, package.json dosyasında listelenen express, ssh2, ws, firebase-admin gibi tüm gerekli kütüphaneleri otomatik olarak yükleyecektir.
+Adım 3: Reverse Proxy (Nginx) Yapılandırması
 
-Adım 3: Reverse Proxy (Nginx) Kurulumu
+Backend'inize HTTPS üzerinden güvenli bir şekilde erişmek ve CORS hatalarını önlemek için Nginx'i yapılandıracağız.
 
-Backend'inize HTTPS üzerinden güvenli bir şekilde erişmek ve CORS hatalarını önlemek için Nginx kurmanız gerekmektedir.
-
-Nginx'i Yükleyin:
+SSL Sertifikası Alın:
+Backend alan adınız için Let's Encrypt kullanarak ücretsiz bir SSL sertifikası alın.
 
 sudo apt update
-sudo apt install nginx
-
-
-Alan Adı ve SSL:
-Backend'iniz için bir subdomain oluşturun (örn: backend.alanadiniz.com) ve bu adrese bir SSL sertifikası alın. (Let's Encrypt ve Certbot tavsiye edilir).
-
 sudo apt install certbot python3-certbot-nginx
 sudo certbot --nginx -d backend.alanadiniz.com
 
 
 Nginx'i Yapılandırın:
-sudo nano /etc/nginx/sites-available/default (veya alan adınıza özel dosya) komutuyla Nginx yapılandırma dosyanızı açın ve ilgili server { ... } bloğunu aşağıdakiyle değiştirin:
+sudo nano /etc/nginx/sites-available/default (veya alan adınıza özel dosya) komutuyla Nginx yapılandırma dosyanızı açın ve ilgili server bloğunu aşağıdakiyle değiştirin. (Adresleri kendinize göre düzenlemeyi unutmayın!)
 
 server {
-    server_name backend.alanadiniz.com; # Kendi alan adınızı yazın
+    server_name backend.alanadiniz.com; # 1. Kendi backend alan adınızı yazın
 
     location / {
-        # OPTIONS (preflight) istekleri için CORS yönetimi
+        # Tarayıcının ön kontrol (preflight) isteklerini yönetir
         if ($request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' '[https://frontend-alan-adiniz.com](https://frontend-alan-adiniz.com)'; # Frontend adresinizi yazın
+            add_header 'Access-Control-Allow-Origin' '[https://logs.alanadiniz.com](https://logs.alanadiniz.com)'; # 2. Kendi frontend alan adınızı yazın
             add_header 'Access-Control-Allow-Methods' 'GET, POST, DELETE, OPTIONS' always;
             add_header 'Access-Control-Allow-Headers' 'Content-Type' always;
             add_header 'Access-Control-Max-Age' 172800;
             return 204;
         }
 
-        # Normal istekler için CORS başlığı
-        add_header 'Access-Control-Allow-Origin' '[https://frontend-alan-adiniz.com](https://frontend-alan-adiniz.com)' always;
+        # Normal istekler için CORS başlığını ekler
+        add_header 'Access-Control-Allow-Origin' '[https://logs.alanadiniz.com](https://logs.alanadiniz.com)' always; # 3. Kendi frontend alan adınızı yazın
 
-        # İsteği Node.js uygulamasına yönlendirme
+        # İsteği Node.js uygulamasına yönlendirir
         proxy_pass http://localhost:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        # WebSocket bağlantısı için gerekli ayarlar
+        # WebSocket bağlantısının çalışması için gerekli ayarlar
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -144,16 +142,18 @@ Nginx'i Yeniden Başlatın:
 sudo nginx -t && sudo systemctl reload nginx
 
 
-Adım 4: Frontend Kurulumu
+Adım 4: Frontend Yapılandırması
 
-log_monitor.html dosyasını web sunucunuzun (frontend'in yayınlandığı yer) kök dizinine taşıyın.
+Proje ana dizinindeki log_monitor.html dosyasını bir metin editörüyle açın.
 
-Dosyayı bir metin editörüyle açın ve en üstteki <script> bölümünde yer alan aşağıdaki değişkenleri, Adım 3'te yapılandırdığınız backend adresinizle güncelleyin:
+<script> bölümünün en başındaki iki değişkeni, kendi backend adresinizle güncelleyin:
 
 // Backend URL'si
 const apiUrl = '[https://backend.alanadiniz.com](https://backend.alanadiniz.com)';
 const wsUrl = 'wss://backend.alanadiniz.com';
 
+
+Bu düzenlenmiş log_monitor.html dosyasını, frontend'i yayınlayacağınız sunucunun kök dizinine yükleyin.
 
 Adım 5: Uygulamayı Başlatma
 
