@@ -72,8 +72,8 @@ Adım 2: Backend Kurulumu
 
 Projeyi Klonlayın ve Dizine Girin:
 
-git clone [https://github.com/KULLANICI-ADINIZ/REPO-ADINIZ.git](https://github.com/KULLANICI-ADINIZ/REPO-ADINIZ.git)
-cd REPO-ADINIZ/log-monitor-backend
+git clone https://github.com/cagrisaltik/web-log.git
+cd web-log
 
 
 Anahtar Dosyasını Taşıyın:
