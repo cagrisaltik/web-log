@@ -7,8 +7,8 @@ const crypto = require('crypto');
 const admin = require('firebase-admin');
 
 // --- Firebase'i Başlatma ---
-// serviceAccountKey.json dosyasının bu dosya ile aynı dizinde olduğundan emin olun
 try {
+    // serviceAccountKey.json dosyasının bu dosya ile aynı dizinde olduğundan emin olun
     const serviceAccount = require('./serviceAccountKey.json');
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 } catch (error) {
@@ -40,6 +40,7 @@ const BASE_LOG_DIR = '/var/log'; // Logların aranacağı ana dizin
 // --- Şifreleme ve Çözme Fonksiyonları ---
 function encrypt(text) {
     try {
+        if (!text) return null; // Boş metni şifreleme
         const iv = crypto.randomBytes(IV_LENGTH);
         const cipher = crypto.createCipheriv(algorithm, Buffer.from(ENCRYPTION_KEY), iv);
         let encrypted = cipher.update(text);
@@ -50,9 +51,9 @@ function encrypt(text) {
         throw new Error("Şifreleme sırasında bir hata oluştu.");
     }
 }
-
 function decrypt(text) {
     try {
+        if (!text) return null; // Boş metni çözme
         const textParts = text.split(':');
         if (textParts.length !== 2) throw new Error("Geçersiz şifrelenmiş metin formatı.");
         const iv = Buffer.from(textParts.shift(), 'hex');
@@ -67,9 +68,95 @@ function decrypt(text) {
     }
 }
 
-// --- API Endpoint'leri ---
+// executeCommand - exit ve close olaylarını birlikte ele alır
+const executeCommand = (command) => new Promise((resolve, reject) => {
+    if (!sshConnection) return reject(new Error('SSH bağlantısı mevcut değil.'));
 
-// Ana endpoint (test için)
+    let stdoutData = '';
+    let stderrData = '';
+    let exitCode = null;
+    let exitSignal = null;
+    let streamClosed = false;
+
+    console.log(`[DEBUG] Komut çalıştırılıyor: ${command}`);
+
+    sshConnection.exec(command, (err, stream) => {
+        if (err) {
+            console.error(`[DEBUG] Komut başlatılamadı (${command}):`, err);
+            return reject(new Error(`Komut başlatılamadı (${command}): ${err.message}`));
+        }
+
+        console.log(`[DEBUG] Stream oluşturuldu (${command}). Olaylar dinleniyor...`);
+
+        stream.on('data', chunk => { stdoutData += chunk.toString(); })
+        .stderr.on('data', errChunk => { console.log(`[DEBUG] stderr (${command}): Veri alındı (${errChunk.length} byte)`); stderrData += errChunk.toString(); })
+        .on('exit', (code, signal) => { console.log(`[DEBUG] Komut '${command}' exit olayı. Kod: ${code}, Sinyal: ${signal}`); exitCode = code; exitSignal = signal; })
+        .on('close', () => {
+             console.log(`[DEBUG] Stream '${command}' close olayı. Stderr: '${stderrData.trim()}'`);
+             streamClosed = true;
+
+             if (stderrData.trim()) {
+                  console.warn(`[DEBUG] Komut '${command}' stderr üretti: ${stderrData.trim()}`);
+                  // ls için spesifik hataları direkt ilet, diğer durumlarda exit koduna bak
+                  if (command.startsWith('ls') && (stderrData.includes('Permission denied') || stderrData.includes('No such file or directory'))) {
+                      reject(new Error(stderrData.trim()));
+                  } else if (exitCode === 0) {
+                      // Bazen stderr'e bilgi yazılır ama kod 0'dır, bunu başarılı sayalım
+                      console.log(`[DEBUG] Komut '${command}' stderr üretti ama exit kodu 0, başarılı kabul ediliyor.`);
+                      resolve(stdoutData.trim());
+                  } else {
+                     reject(new Error(stderrData.trim())); // Diğer stderr hataları
+                  }
+             }
+             else if (exitCode === 0) {
+                 console.log(`[DEBUG] Komut '${command}' başarılı (exit kodu 0).`);
+                 resolve(stdoutData.trim());
+             }
+             else if (exitCode !== null && exitCode !== 0) {
+                  const exitInfo = `çıkış kodu ${exitCode}`;
+                  console.error(`[DEBUG] Komut '${command}' başarısız oldu: ${exitInfo}`);
+                  reject(new Error(`Komut '${command}' ${exitInfo}.`));
+             }
+             else { // stderr yok, exit kodu belirsiz -> Başarılı kabul et (güvenilir olmayan durumlar için)
+                  console.log(`[DEBUG] Komut '${command}' başarılı (close olayı, stderr boş, exit kodu belirsiz).`);
+                  resolve(stdoutData.trim());
+             }
+        })
+        .on('error', (streamErr) => {
+           console.error(`[DEBUG] Stream hatası (${command}):`, streamErr);
+           if (!streamClosed) reject(new Error(`Stream hatası (${command}): ${streamErr.message}`));
+        });
+    });
+});
+
+
+// /proc/stat'tan CPU zamanlarını parse eden fonksiyon
+const parseProcStat = (statOutput) => {
+    const lines = statOutput.split('\n'); const cpuLine = lines.find(line => line.startsWith('cpu ')); if (!cpuLine) return null;
+    const times = cpuLine.split(/\s+/).slice(1).map(Number); if (times.length < 4) return null; // En az user, nice, system, idle olmalı
+    const idle = times[3] || 0; const total = times.reduce((sum, time) => sum + time, 0); return { idle, total };
+};
+// /proc/stat'ı iki kez okuyup CPU kullanımını hesaplayan fonksiyon
+const getCpuUsage = () => new Promise(async (resolve, reject) => {
+    try {
+        console.log("[DEBUG] getCpuUsage başlatıldı.");
+        const stat1Output = await executeCommand('cat /proc/stat'); const stat1 = parseProcStat(stat1Output);
+        if (!stat1) { console.error("[DEBUG] /proc/stat formatı anlaşılamadı (ilk okuma)."); return reject(new Error("/proc/stat formatı anlaşılamadı (ilk okuma).")); }
+        console.log("[DEBUG] İlk /proc/stat okundu.");
+        await new Promise(res => setTimeout(res, 500)); // Arada bekleme süresi
+        console.log("[DEBUG] İkinci /proc/stat okunuyor...");
+        const stat2Output = await executeCommand('cat /proc/stat'); const stat2 = parseProcStat(stat2Output);
+        if (!stat2) { console.error("[DEBUG] /proc/stat formatı anlaşılamadı (ikinci okuma)."); return reject(new Error("/proc/stat formatı anlaşılamadı (ikinci okuma).")); }
+        console.log("[DEBUG] İkinci /proc/stat okundu.");
+        const idleDiff = stat2.idle - stat1.idle; const totalDiff = stat2.total - stat1.total;
+        // Zaman farkı yoksa veya negatifse (çok nadir bir durum, sistem saatiyle oynanmış olabilir)
+        if (totalDiff <= 0) { console.log("[DEBUG] CPU zaman farkı <= 0, %0 kullanım varsayılıyor."); resolve("0.0"); return; }
+        const usage = 100 * (1 - idleDiff / totalDiff); // Hesaplama
+        console.log(`[DEBUG] CPU kullanımı hesaplandı: ${usage.toFixed(1)}%`); resolve(usage.toFixed(1));
+    } catch (error) { console.error("[DEBUG] getCpuUsage içinde hata:", error); reject(error); } // Hataları yakala ve ilet
+});
+
+// --- API Endpoint'leri ---
 app.get('/', (req, res) => res.send('Backend sunucusu çalışıyor!'));
 
 // Kayıtlı sunucuları listeler
@@ -98,7 +185,6 @@ app.post('/servers', async (req, res) => {
         if (!name || !ip || !user || !authType) {
             return res.status(400).json({ success: false, message: 'İsim, IP, Kullanıcı Adı ve Kimlik Doğrulama Tipi zorunludur.' });
         }
-        
         const serverPort = parseInt(port, 10) || 22; // Port'u sayıya çevir, yoksa 22 kullan
         if (isNaN(serverPort) || serverPort <= 0 || serverPort > 65535) {
              return res.status(400).json({ success: false, message: 'Geçersiz port numarası.' });
@@ -116,7 +202,7 @@ app.post('/servers', async (req, res) => {
         } else {
             return res.status(400).json({ success: false, message: 'Geçersiz kimlik doğrulama tipi.' });
         }
-        
+
         // Firestore'a ekleme
         const docRef = await serversCollection.add(newServer);
         res.status(201).json({ success: true, id: docRef.id, message: 'Sunucu başarıyla eklendi.' });
@@ -126,17 +212,58 @@ app.post('/servers', async (req, res) => {
     }
 });
 
+// Sunucu bilgilerini güncelleyen endpoint
+app.put('/servers/:id', async (req, res) => {
+    try {
+        const serverId = req.params.id;
+        const { name, ip, user, port, authType, pass, privateKey } = req.body;
+
+        // Gerekli alan kontrolü (ekleme ile aynı)
+        if (!name || !ip || !user || !authType) return res.status(400).json({ success: false, message: 'İsim, IP, Kullanıcı Adı ve Kimlik Doğrulama Tipi zorunludur.' });
+        const serverPort = parseInt(port, 10) || 22;
+        if (isNaN(serverPort) || serverPort <= 0 || serverPort > 65535) return res.status(400).json({ success: false, message: 'Geçersiz port numarası.' });
+
+        const docRef = serversCollection.doc(serverId);
+        const doc = await docRef.get();
+        if (!doc.exists) return res.status(404).json({ success: false, message: 'Güncellenecek sunucu bulunamadı.' });
+
+        const updatedServer = { name, ip, user, port: serverPort, authType };
+
+        // Kimlik doğrulama bilgisi güncellenmişse şifrele
+        if (authType === 'password') {
+            if (pass) { // Sadece yeni parola varsa güncelle
+                updatedServer.password = encrypt(pass);
+                updatedServer.privateKey = admin.firestore.FieldValue.delete(); // Varsa eski anahtarı sil
+            } else if (doc.data().authType === 'key') { // Auth tipi değiştiyse eski anahtarı sil
+                 updatedServer.privateKey = admin.firestore.FieldValue.delete();
+            }
+        } else if (authType === 'key') {
+            if (privateKey) { // Sadece yeni anahtar varsa güncelle
+                updatedServer.privateKey = encrypt(privateKey);
+                updatedServer.password = admin.firestore.FieldValue.delete(); // Varsa eski parolayı sil
+            } else if (doc.data().authType === 'password') { // Auth tipi değiştiyse eski parolayı sil
+                 updatedServer.password = admin.firestore.FieldValue.delete();
+            }
+        } else {
+            return res.status(400).json({ success: false, message: 'Geçersiz kimlik doğrulama tipi.' });
+        }
+
+        await docRef.update(updatedServer);
+        res.json({ success: true, message: 'Sunucu başarıyla güncellendi.' });
+
+    } catch (error) {
+        console.error("Sunucu güncelleme hatası:", error);
+        res.status(500).json({ success: false, message: `Sunucu güncellenemedi: ${error.message}` });
+    }
+});
+
 // Bir sunucuyu siler
 app.delete('/servers/:id', async (req, res) => {
     try {
         const serverId = req.params.id;
         const docRef = serversCollection.doc(serverId);
         const doc = await docRef.get();
-
-        if (!doc.exists) {
-            return res.status(404).json({ success: false, message: 'Silinecek sunucu bulunamadı.' });
-        }
-
+        if (!doc.exists) return res.status(404).json({ success: false, message: 'Silinecek sunucu bulunamadı.' });
         await docRef.delete();
         res.json({ success: true, message: 'Sunucu başarıyla silindi.' });
     } catch (error) {
@@ -147,226 +274,115 @@ app.delete('/servers/:id', async (req, res) => {
 
 // Belirtilen ID'deki sunucuya bağlanır
 app.post('/connect', async (req, res) => {
-    // Mevcut bağlantı varsa kapat
     if (sshConnection) {
-        try {
-            sshConnection.end();
-        } catch (e) { console.error("Mevcut SSH bağlantısı kapatılırken hata:", e); }
+        try { sshConnection.end(); } catch (e) { console.error("Mevcut SSH bağlantısı kapatılırken hata:", e); }
         sshConnection = null;
     }
-
     try {
         const { serverId } = req.body;
         if (!serverId) return res.status(400).json({ success: false, message: 'Sunucu ID bilgisi eksik.' });
-
-        // Firestore'dan sunucu bilgilerini al
         const serverDoc = await serversCollection.doc(serverId).get();
         if (!serverDoc.exists) return res.status(404).json({ success: false, message: 'Sunucu bulunamadı.' });
-        
         const serverData = serverDoc.data();
-        
-        // Bağlantı konfigürasyonunu oluştur
-        const connectionConfig = {
-            host: serverData.ip,
-            port: serverData.port || 22,
-            username: serverData.user,
-            readyTimeout: 20000 // 20 saniye bağlantı timeout
-        };
-
-        // Kimlik doğrulama yöntemine göre bilgileri ekle (ve çöz)
+        const connectionConfig = { host: serverData.ip, port: serverData.port || 22, username: serverData.user, readyTimeout: 20000 };
+        // Geriye dönük uyumluluk ve authType kontrolü
         if (serverData.authType === 'key' && serverData.privateKey) {
             connectionConfig.privateKey = decrypt(serverData.privateKey);
-        } else if ((serverData.authType === 'password' || !serverData.authType) && serverData.password) { // Eski kayıtlarla uyumluluk
+        } else if ((serverData.authType === 'password' || !serverData.authType) && serverData.password) {
             connectionConfig.password = decrypt(serverData.password);
         } else {
             return res.status(400).json({ success: false, message: 'Sunucu için geçerli kimlik doğrulama metodu bulunamadı.' });
         }
-
-        // Yeni SSH bağlantısı oluştur
         const conn = new Client();
         conn.on('ready', () => {
             console.log(`SSH Bağlantısı Başarılı: ${serverData.ip}`);
-            sshConnection = conn; // Bağlantıyı global değişkende sakla
+            sshConnection = conn;
             res.json({ success: true, message: 'Sunucuya başarıyla bağlanıldı!', ip: serverData.ip });
         }).on('error', (err) => {
             console.error(`SSH Bağlantı Hatası (${serverData.ip}):`, err.message);
-            // Daha anlaşılır hata mesajları
             let userMessage = `Bağlantı hatası: ${err.message}`;
-            if (err.message.includes('authentication methods failed')) {
-                userMessage = 'Kimlik doğrulama başarısız. Kullanıcı adı, parola veya özel anahtarınızı kontrol edin.';
-            } else if (err.message.includes('ECONNREFUSED')) {
-                userMessage = 'Bağlantı reddedildi. Sunucu IP veya port numarasını kontrol edin, SSH servisinin çalıştığından emin olun.';
-            } else if (err.message.includes('ETIMEDOUT') || err.message.includes('Timed out')) {
-                userMessage = 'Bağlantı zaman aşımına uğradı. Sunucu IP veya port numarasını kontrol edin, ağ bağlantınızı veya güvenlik duvarı ayarlarını gözden geçirin.';
-            }
-             // Bağlantı nesnesini temizle
-            try { conn.end(); } catch (e) {}
-            sshConnection = null;
+            if (err.message.includes('authentication methods failed')) userMessage = 'Kimlik doğrulama başarısız. Kullanıcı adı, parola veya özel anahtarınızı kontrol edin.';
+            else if (err.message.includes('ECONNREFUSED')) userMessage = 'Bağlantı reddedildi. Sunucu IP veya port numarasını kontrol edin, SSH servisinin çalıştığından emin olun.';
+            else if (err.message.includes('ETIMEDOUT') || err.message.includes('Timed out')) userMessage = 'Bağlantı zaman aşımına uğradı. Sunucu IP veya port numarasını kontrol edin, ağ bağlantınızı veya güvenlik duvarı ayarlarını gözden geçirin.';
+            try { conn.end(); } catch (e) {} sshConnection = null;
             res.status(500).json({ success: false, message: userMessage });
         }).connect(connectionConfig);
-
-        // Bağlantı kapatıldığında global değişkeni temizle
         conn.on('close', () => {
-             console.log(`SSH Bağlantısı Kapatıldı: ${serverData.ip}`);
-             if (sshConnection === conn) { // Sadece bu bağlantı ise temizle
-                 sshConnection = null;
-             }
+            console.log(`SSH Bağlantısı Kapatıldı: ${serverData.ip}`);
+            if (sshConnection === conn) sshConnection = null;
         });
-
     } catch (error) {
         console.error("Bağlantı işlemi sırasında genel hata:", error);
         res.status(500).json({ success: false, message: `Bağlanırken bir hata oluştu: ${error.message}` });
     }
 });
 
-// Sunucunun anlık durumunu (uptime, disk, ram, cpu) getirir
-app.get('/server-status', (req, res) => {
-    if (!sshConnection) {
-        return res.status(400).json({ success: false, message: 'Aktif bir sunucu bağlantısı yok.' });
-    }
-
-    // SSH üzerinden komut çalıştırmak için yardımcı fonksiyon
-    const executeCommand = (command) => new Promise((resolve, reject) => {
-        if (!sshConnection) return reject(new Error('SSH bağlantısı mevcut değil.'));
-        sshConnection.exec(command, (err, stream) => {
-            if (err) return reject(err);
-            let data = '';
-            let errorData = '';
-            stream.on('data', chunk => data += chunk.toString())
-                  .stderr.on('data', errChunk => errorData += errChunk.toString())
-                  .on('close', (code) => {
-                      if (code !== 0) { // Komut hata ile bittiyse
-                          reject(new Error(errorData.trim() || `Komut '${command}' hata kodu ${code} ile bitti.`));
-                      } else {
-                          resolve(data.trim());
-                      }
-                  });
-        });
-    });
-
-    // Gerekli komutları paralel olarak çalıştır
-    Promise.all([
-        executeCommand('uptime -p'),
-        executeCommand("df -h / | awk 'NR==2{print $2,$3,$5}'"), // Total, Used, Percent for root '/'
-        executeCommand("free -m | awk 'NR==2{print $2,$3}'"), // Total, Used memory in MB
-        executeCommand("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'") // CPU Usage %
-    ]).then(([uptimeOutput, diskOutput, memOutput, cpuOutput]) => {
-        
-        // Komut çıktılarını parse et
-        const diskParts = diskOutput.split(' ');
-        const memParts = memOutput.split(' ');
-        
-        const memoryUsed = parseInt(memParts[1], 10) || 0;
-        const memoryTotal = parseInt(memParts[0], 10) || 0;
-        const memoryPercent = memoryTotal > 0 ? Math.round((memoryUsed / memoryTotal) * 100) : 0;
-        
+// Sunucunun anlık durumunu getirir
+app.get('/server-status', async (req, res) => {
+    if (!sshConnection) return res.status(400).json({ success: false, message: 'Aktif bir sunucu bağlantısı yok.' });
+    try {
+        const uptimePromise = executeCommand('uptime -p').catch(e => "N/A");
+        const diskPromise = executeCommand("df -h / | awk 'NR==2{print $2,$3,$5}'").catch(e => "N/A N/A N/A");
+        const memPromise = executeCommand("free -m | awk 'NR==2{print $2,$3}'").catch(e => "0 0");
+        const cpuPromise = getCpuUsage().catch(e => "0.0");
+        const [uptimeOutput, diskOutput, memOutput, cpuOutput] = await Promise.all([uptimePromise, diskPromise, memPromise, cpuPromise]);
+        const diskParts = diskOutput.split(' '); const memParts = memOutput.split(' ');
+        const memoryUsed = parseInt(memParts[1], 10) || 0; const memoryTotal = parseInt(memParts[0], 10) || 0; const memoryPercent = memoryTotal > 0 ? Math.round((memoryUsed / memoryTotal) * 100) : 0;
         const cpuPercent = parseFloat(cpuOutput).toFixed(1) || '0.0';
-
-        // Sonucu JSON olarak hazırla
         const status = {
-            uptime: uptimeOutput.replace('up ', ''),
-            disk: {
-                total: diskParts[0] || 'N/A',
-                used: diskParts[1] || 'N/A',
-                percent: diskParts[2] || 'N/A'
-            },
-            memory: {
-                total: `${memoryTotal}MB`,
-                used: `${memoryUsed}MB`,
-                percent: `${memoryPercent}%`
-            },
-            cpu: {
-                percent: `${cpuPercent}%`
-            }
+            uptime: uptimeOutput !== "N/A" ? uptimeOutput.replace('up ', '') : "N/A",
+            disk: { total: diskParts[0] || 'N/A', used: diskParts[1] || 'N/A', percent: diskParts[2] || 'N/A' },
+            memory: { total: `${memoryTotal}MB`, used: `${memoryUsed}MB`, percent: `${memoryPercent}%` },
+            cpu: { percent: `${cpuPercent}%` }
         };
-
         res.json({ success: true, status });
-
-    }).catch(error => {
-        console.error("Sunucu durumu alınırken hata:", error.message);
-        res.status(500).json({ success: false, message: `Sunucu durumu alınamadı: ${error.message}` });
-    });
+    } catch (error) { console.error("[DEBUG] /server-status içinde beklenmedik hata:", error); res.status(500).json({ success: false, message: `Sunucu durumu alınamadı: ${error.message}` }); }
 });
+
 
 // Belirtilen dizindeki dosya ve klasörleri listeler
-app.post('/browse', (req, res) => {
+app.post('/browse', async (req, res) => {
     if (!sshConnection) return res.status(400).json({ success: false, message: 'Aktif bir sunucu bağlantısı yok.' });
-
     const requestedSubPath = req.body.path || '/';
-    // Güvenlik: Yolu BASE_LOG_DIR ile birleştir ve normalize et
     const fullPath = path.normalize(path.join(BASE_LOG_DIR, requestedSubPath));
-
-    // Güvenlik Kontrolü: Kullanıcının BASE_LOG_DIR dışına çıkmasını engelle
-    if (!fullPath.startsWith(path.normalize(BASE_LOG_DIR))) {
-        return res.status(403).json({ success: false, message: 'Erişim engellendi.' });
+    if (!fullPath.startsWith(path.normalize(BASE_LOG_DIR))) return res.status(403).json({ success: false, message: 'Erişim engellendi.' });
+    const command = `ls -F "${fullPath}"`;
+    try {
+        const data = await executeCommand(command);
+        const items = data.split('\n').filter(Boolean).map(item => ({ name: item, type: item.endsWith('/') ? 'directory' : 'file' }));
+        res.json({ success: true, items: items });
+    } catch (error) {
+        console.error(`[Browse] Dizin listeleme hatası (${fullPath}):`, error.message);
+        let userMessage = `Dizin listelenemedi: ${error.message}`;
+        if (error.message.includes('No such file or directory')) userMessage = 'Belirtilen dizin bulunamadı.';
+        else if (error.message.includes('Permission denied')) userMessage = 'Bu dizini listelemek için izniniz yok.';
+        res.status(500).json({ success: false, message: userMessage });
     }
-
-    // ls komutunu -F parametresi ile çalıştır (tipleri belirtir: / klasör, * çalıştırılabilir vb.)
-    const command = `ls -F "${fullPath}"`; // Yolu tırnak içine alarak boşluklu isimleri destekle
-    sshConnection.exec(command, (err, stream) => {
-        if (err) return res.status(500).json({ success: false, message: err.message });
-        let data = '';
-        let errorData = '';
-        stream.on('data', (c) => data += c.toString())
-              .stderr.on('data', (c) => errorData += c.toString())
-              .on('close', (code) => {
-                  if (code !== 0) {
-                      // Hata varsa, özellikle "No such file or directory" gibi, bunu kullanıcıya bildir
-                      return res.status(500).json({ success: false, message: errorData.trim() || `Dizin listelenemedi (hata kodu: ${code}).` });
-                  }
-                  // Çıktıyı satırlara böl, boş satırları at
-                  const items = data.split('\n').filter(Boolean).map(item => ({
-                      name: item,
-                      // Son karakter '/' ise klasör, değilse dosya olarak işaretle
-                      type: item.endsWith('/') ? 'directory' : 'file'
-                  }));
-                  res.json({ success: true, items: items });
-              });
-    });
 });
-
 // Belirtilen dosyanın son X satırını getirir
 app.post('/history', (req, res) => {
     if (!sshConnection) return res.status(400).json({ success: false, message: 'Aktif bir sunucu bağlantısı yok.' });
-
-    const { filePath, lines = 200 } = req.body; // Varsayılan 200 satır
+    const { filePath, lines = 200 } = req.body;
     const absolutePath = path.resolve(filePath);
-
-    // Güvenlik Kontrolü
-    if (!absolutePath.startsWith(path.resolve(BASE_LOG_DIR))) {
-        return res.status(403).json({ success: false, message: 'Erişim engellendi.' });
-    }
-
-    const command = `tail -n ${lines} "${absolutePath}"`; // Yolu tırnak içine al
+    if (!absolutePath.startsWith(path.resolve(BASE_LOG_DIR))) return res.status(403).json({ success: false, message: 'Erişim engellendi.' });
+    const command = `tail -n ${lines} "${absolutePath}"`;
     sshConnection.exec(command, (err, stream) => {
         if (err) return res.status(500).json({ success: false, message: err.message });
-        let data = '';
-        let errorData = '';
-        stream.on('data', (c) => data += c.toString())
-              .stderr.on('data', (c) => errorData += c.toString())
-              .on('close', (code) => {
-                   if (code !== 0 && !data) { // Hata kodu varsa VE hiç data gelmediyse (örn. dosya yok)
-                       return res.status(500).json({ success: false, message: errorData.trim() || `Geçmiş loglar alınamadı (hata kodu: ${code}).` });
-                   }
-                   // Hata olsa bile gelen datayı gönder (örn. tail: file truncated)
-                   res.json({ success: true, history: data.split('\n').filter(Boolean) });
-               });
+        let data = ''; let errorData = '';
+        stream.on('data', (c) => data += c.toString()).stderr.on('data', (c) => errorData += c.toString()).on('close', (code) => {
+            if (code !== 0 && !data) { return res.status(500).json({ success: false, message: errorData.trim() || `Geçmiş loglar alınamadı (hata kodu: ${code}).` }); }
+            res.json({ success: true, history: data.split('\n').filter(Boolean) });
+        });
     });
 });
-
 // Aktif SSH bağlantısını sonlandırır
 app.post('/disconnect', (req, res) => {
     if (sshConnection) {
-        try {
-            sshConnection.end();
-        } catch(e) { console.error("Disconnect sırasında SSH bağlantısı kapatılırken hata:", e); }
+        try { sshConnection.end(); } catch(e) { console.error("Disconnect sırasında SSH bağlantısı kapatılırken hata:", e); }
         sshConnection = null;
     }
-    // Aktif log stream'ini de durdur
     if (activeLogStream) {
-        try {
-            activeLogStream.close(); // Bu ssh2 stream objesi için doğru metod olmayabilir, kontrol et
-        } catch(e) { console.error("Disconnect sırasında log stream kapatılırken hata:", e); }
+        try { activeLogStream.close(); } catch(e) { console.error("Disconnect sırasında log stream kapatılırken hata:", e); }
         activeLogStream = null;
     }
     console.log("Bağlantı kesildi (manuel).");
@@ -377,74 +393,39 @@ app.post('/disconnect', (req, res) => {
 wss.on('connection', ws => {
     console.log('Yeni bir WebSocket istemcisi bağlandı.');
     let currentStream = null; // Her WebSocket bağlantısı için kendi stream'ini tut
-
-    // İstemciden mesaj geldiğinde (izlenecek dosya yolu)
     ws.on('message', message => {
         const filePath = message.toString();
         console.log(`İzleme isteği alındı: ${filePath}`);
-
-        // Önceki stream'i (varsa) kapat
-        if (currentStream) {
-            try { currentStream.close(); } catch (e) {}
-            currentStream = null;
-        }
-        // Global sshConnection yoksa hata gönder
+        if (currentStream) { try { currentStream.close(); } catch (e) {} currentStream = null; }
         if (!sshConnection) return ws.send('[SYSTEM] Hata: Aktif SSH bağlantısı yok.');
-
-        // Güvenlik Kontrolü
         const fullPath = path.resolve(filePath);
         if (!fullPath.startsWith(path.resolve(BASE_LOG_DIR))) return ws.send('[SYSTEM] Hata: Erişim engellendi.');
-
-        // `tail -f` komutunu çalıştır
         const command = `tail -f "${fullPath}"`;
         sshConnection.exec(command, (err, stream) => {
             if (err) return ws.send(`[SYSTEM] Hata: ${err.message}`);
-
             console.log(`'${filePath}' için tail -f başlatıldı.`);
-            currentStream = stream; // Bu WebSocket için stream'i sakla
-
-            // Yeni veri geldiğinde istemciye gönder
-            stream.on('data', data => {
-                if (ws.readyState === WebSocket.OPEN) { // Sadece bağlantı açıksa gönder
-                    ws.send(data.toString());
-                }
-            })
-            // Hata çıktısı olursa istemciye gönder
-            .stderr.on('data', data => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(`[SYSTEM] Hata: ${data.toString()}`);
-                }
-            })
-            // Stream kapandığında (örn. dosya silindiğinde)
-            .on('close', () => {
-                 console.log(`'${filePath}' için tail -f sonlandı.`);
-                 if (currentStream === stream) { // Sadece bu stream ise temizle
-                     currentStream = null;
-                 }
-                 if (ws.readyState === WebSocket.OPEN) {
-                    ws.send('[SYSTEM] Log akışı sonlandı.');
-                 }
-            });
+            currentStream = stream;
+            stream.on('data', data => { if (ws.readyState === WebSocket.OPEN) ws.send(data.toString()); })
+                  .stderr.on('data', data => { if (ws.readyState === WebSocket.OPEN) ws.send(`[SYSTEM] Hata: ${data.toString()}`); })
+                  .on('close', () => {
+                      console.log(`'${filePath}' için tail -f sonlandı.`);
+                      if (currentStream === stream) currentStream = null;
+                      if (ws.readyState === WebSocket.OPEN) ws.send('[SYSTEM] Log akışı sonlandı.');
+                  })
+                  .on('error', (streamErr) => {
+                      console.error(`Tail stream hatası (${filePath}):`, streamErr);
+                      if (currentStream === stream) currentStream = null;
+                      if (ws.readyState === WebSocket.OPEN) ws.send(`[SYSTEM] Log akışı hatası: ${streamErr.message}`);
+                  });
         });
     });
-
-    // WebSocket bağlantısı kapandığında
     ws.on('close', () => {
         console.log('WebSocket istemcisi ayrıldı.');
-        // İlgili stream'i kapat
-        if (currentStream) {
-            try { currentStream.close(); } catch (e) {}
-            currentStream = null;
-        }
+        if (currentStream) { try { currentStream.close(); } catch (e) {} currentStream = null; }
     });
-
-    // WebSocket hatası oluştuğunda
     ws.on('error', (error) => {
         console.error('WebSocket hatası:', error);
-        if (currentStream) {
-            try { currentStream.close(); } catch (e) {}
-            currentStream = null;
-        }
+        if (currentStream) { try { currentStream.close(); } catch (e) {} currentStream = null; }
     });
 });
 
@@ -456,12 +437,12 @@ server.listen(PORT, '0.0.0.0', () => {
 // Uygulama kapanırken SSH bağlantısını düzgünce kapat
 process.on('SIGINT', () => {
     console.log("Uygulama kapatılıyor...");
-    if (sshConnection) {
-        sshConnection.end();
-    }
+    if (sshConnection) sshConnection.end();
     server.close(() => {
         console.log("HTTP sunucusu kapatıldı.");
         process.exit(0);
     });
 });
+process.on('uncaughtException', (error) => { console.error('Yakalanmayan Hata:', error); });
+process.on('unhandledRejection', (reason, promise) => { console.error('İşlenmeyen Promise Reddi:', reason); });
 
