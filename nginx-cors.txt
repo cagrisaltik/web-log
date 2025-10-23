@@ -32,7 +32,7 @@ server {
             # Sadece sizin frontend'inizden gelen isteklere izin veriyoruz.
             add_header 'Access-Control-Allow-Origin' 'xxx' always;
             # İzin verilen metodları (GET, POST, vb.) belirtiyoruz.
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, DELETE, PUT, OPTIONS' always;
             # Tarayıcının göndermesine izin verilen başlıkları belirtiyoruz.
             add_header 'Access-Control-Allow-Headers' 'Content-Type' always;
             # Bu ön kontrolün ne kadar süre geçerli olacağını belirtiyoruz.
@@ -55,4 +55,5 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
+
 }
