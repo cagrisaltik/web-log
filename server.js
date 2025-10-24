@@ -5,10 +5,11 @@ const { Client } = require('ssh2');
 const path = require('path');
 const crypto = require('crypto');
 const admin = require('firebase-admin');
+const nodemailer = require('nodemailer'); // YENİ: E-posta için
+const axios = require('axios'); // YENİ: Webhook için
 
 // --- Firebase'i Başlatma ---
 try {
-    // serviceAccountKey.json dosyasının bu dosya ile aynı dizinde olduğundan emin olun
     const serviceAccount = require('./serviceAccountKey.json');
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 } catch (error) {
@@ -17,6 +18,7 @@ try {
 }
 const db = admin.firestore();
 const serversCollection = db.collection('servers');
+const settingsCollection = db.collection('settings'); // YENİ: Ayarlar için
 // ------------------------------------
 
 // --- Parola Şifreleme Altyapısı ---
@@ -31,7 +33,8 @@ app.use(express.json()); // JSON body'lerini parse etmek için
 const PORT = process.env.PORT || 3000; // Ortam değişkeninden port al, yoksa 3000 kullan
 
 let sshConnection = null;
-let activeLogStream = null;
+// YENİ: Aktif stream'leri ve ayarları saklamak için daha gelişmiş bir yapı
+let activeStreams = new Map(); // ws -> { stream, serverId, filePath }
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -202,7 +205,7 @@ app.post('/servers', async (req, res) => {
         } else {
             return res.status(400).json({ success: false, message: 'Geçersiz kimlik doğrulama tipi.' });
         }
-
+        
         // Firestore'a ekleme
         const docRef = await serversCollection.add(newServer);
         res.status(201).json({ success: true, id: docRef.id, message: 'Sunucu başarıyla eklendi.' });
@@ -218,7 +221,6 @@ app.put('/servers/:id', async (req, res) => {
         const serverId = req.params.id;
         const { name, ip, user, port, authType, pass, privateKey } = req.body;
 
-        // Gerekli alan kontrolü (ekleme ile aynı)
         if (!name || !ip || !user || !authType) return res.status(400).json({ success: false, message: 'İsim, IP, Kullanıcı Adı ve Kimlik Doğrulama Tipi zorunludur.' });
         const serverPort = parseInt(port, 10) || 22;
         if (isNaN(serverPort) || serverPort <= 0 || serverPort > 65535) return res.status(400).json({ success: false, message: 'Geçersiz port numarası.' });
@@ -229,18 +231,17 @@ app.put('/servers/:id', async (req, res) => {
 
         const updatedServer = { name, ip, user, port: serverPort, authType };
 
-        // Kimlik doğrulama bilgisi güncellenmişse şifrele
         if (authType === 'password') {
             if (pass) { // Sadece yeni parola varsa güncelle
                 updatedServer.password = encrypt(pass);
-                updatedServer.privateKey = admin.firestore.FieldValue.delete(); // Varsa eski anahtarı sil
+                updatedServer.privateKey = admin.firestore.FieldValue.delete();
             } else if (doc.data().authType === 'key') { // Auth tipi değiştiyse eski anahtarı sil
                  updatedServer.privateKey = admin.firestore.FieldValue.delete();
             }
         } else if (authType === 'key') {
             if (privateKey) { // Sadece yeni anahtar varsa güncelle
                 updatedServer.privateKey = encrypt(privateKey);
-                updatedServer.password = admin.firestore.FieldValue.delete(); // Varsa eski parolayı sil
+                updatedServer.password = admin.firestore.FieldValue.delete();
             } else if (doc.data().authType === 'password') { // Auth tipi değiştiyse eski parolayı sil
                  updatedServer.password = admin.firestore.FieldValue.delete();
             }
@@ -264,7 +265,11 @@ app.delete('/servers/:id', async (req, res) => {
         const docRef = serversCollection.doc(serverId);
         const doc = await docRef.get();
         if (!doc.exists) return res.status(404).json({ success: false, message: 'Silinecek sunucu bulunamadı.' });
+        
         await docRef.delete();
+        // İlgili ayarları da sil
+        await settingsCollection.doc(serverId).delete().catch(e => console.warn(`Ayarlar silinemedi (zaten olmayabilir): ${e.message}`));
+        
         res.json({ success: true, message: 'Sunucu başarıyla silindi.' });
     } catch (error) {
         console.error("Sunucu silme hatası:", error);
@@ -364,7 +369,7 @@ app.post('/history', (req, res) => {
     if (!sshConnection) return res.status(400).json({ success: false, message: 'Aktif bir sunucu bağlantısı yok.' });
     const { filePath, lines = 200 } = req.body;
     const absolutePath = path.resolve(filePath);
-    if (!absolutePath.startsWith(path.resolve(BASE_LOG_DIR))) return res.status(403).json({ success: false, message: 'Erişim engellendi.' });
+    if (!absolutePath.startsWith(path.resolve(BASE_LOG_DIR))) { return res.status(403).json({ success: false, message: 'Erişim engellendi.' }); }
     const command = `tail -n ${lines} "${absolutePath}"`;
     sshConnection.exec(command, (err, stream) => {
         if (err) return res.status(500).json({ success: false, message: err.message });
@@ -381,52 +386,216 @@ app.post('/disconnect', (req, res) => {
         try { sshConnection.end(); } catch(e) { console.error("Disconnect sırasında SSH bağlantısı kapatılırken hata:", e); }
         sshConnection = null;
     }
-    if (activeLogStream) {
-        try { activeLogStream.close(); } catch(e) { console.error("Disconnect sırasında log stream kapatılırken hata:", e); }
-        activeLogStream = null;
-    }
-    console.log("Bağlantı kesildi (manuel).");
+    activeStreams.forEach(s => { if(s.stream) try {s.stream.close();} catch(e){} });
+    activeStreams.clear();
+    console.log("Bağlantı kesildi (manuel) ve tüm stream'ler durduruldu.");
     res.json({ success: true, message: 'Bağlantı başarıyla sonlandırıldı.' });
+});
+
+// --- Alarm ve Bildirim Ayarları Endpoint'leri ---
+app.get('/settings/:serverId', async (req, res) => {
+    try {
+        const serverId = req.params.serverId;
+        const docRef = settingsCollection.doc(serverId);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+            return res.json({
+                success: true,
+                settings: { alarms: [], notifications: { browser: { enabled: true }, email: { enabled: false, smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', to: '' }, webhook: { enabled: false, url: '' } } }
+            });
+        }
+        const settings = doc.data();
+        // Hassas bilgileri çözerek gönder
+        if (settings.notifications.email && settings.notifications.email.smtpPass) {
+            try { settings.notifications.email.smtpPass = decrypt(settings.notifications.email.smtpPass); } catch (e) { settings.notifications.email.smtpPass = ''; }
+        }
+        if (settings.notifications.webhook && settings.notifications.webhook.url) {
+            try { settings.notifications.webhook.url = decrypt(settings.notifications.webhook.url); } catch (e) { settings.notifications.webhook.url = ''; }
+        }
+        res.json({ success: true, settings });
+    } catch (error) { console.error("Ayar getirme hatası:", error); res.status(500).json({ success: false, message: 'Ayarlar alınamadı.' }); }
+});
+app.post('/settings/:serverId', async (req, res) => {
+    try {
+        const serverId = req.params.serverId;
+        const settings = req.body;
+        // Hassas bilgileri şifrele
+        if (settings.notifications.email && settings.notifications.email.smtpPass) {
+            if (settings.notifications.email.smtpPass.includes('******')) {
+                 const oldSettingsDoc = await settingsCollection.doc(serverId).get();
+                 if (oldSettingsDoc.exists && oldSettingsDoc.data().notifications.email.smtpPass) { settings.notifications.email.smtpPass = oldSettingsDoc.data().notifications.email.smtpPass; }
+                 else { settings.notifications.email.smtpPass = null; }
+            } else { settings.notifications.email.smtpPass = encrypt(settings.notifications.email.smtpPass); }
+        }
+        if (settings.notifications.webhook && settings.notifications.webhook.url) {
+             if (settings.notifications.webhook.url.includes('******')) {
+                 const oldSettingsDoc = await settingsCollection.doc(serverId).get();
+                 if (oldSettingsDoc.exists && oldSettingsDoc.data().notifications.webhook.url) { settings.notifications.webhook.url = oldSettingsDoc.data().notifications.webhook.url; }
+                 else { settings.notifications.webhook.url = null; }
+             } else { settings.notifications.webhook.url = encrypt(settings.notifications.webhook.url); }
+        }
+        await settingsCollection.doc(serverId).set(settings, { merge: true });
+        res.json({ success: true, message: 'Ayarlar başarıyla kaydedildi.' });
+    } catch (error) { console.error("Ayar kaydetme hatası:", error); res.status(500).json({ success: false, message: `Ayarlar kaydedilemedi: ${error.message}` }); }
 });
 
 // --- WebSocket Bağlantı Yönetimi ---
 wss.on('connection', ws => {
     console.log('Yeni bir WebSocket istemcisi bağlandı.');
-    let currentStream = null; // Her WebSocket bağlantısı için kendi stream'ini tut
-    ws.on('message', message => {
-        const filePath = message.toString();
-        console.log(`İzleme isteği alındı: ${filePath}`);
-        if (currentStream) { try { currentStream.close(); } catch (e) {} currentStream = null; }
-        if (!sshConnection) return ws.send('[SYSTEM] Hata: Aktif SSH bağlantısı yok.');
-        const fullPath = path.resolve(filePath);
-        if (!fullPath.startsWith(path.resolve(BASE_LOG_DIR))) return ws.send('[SYSTEM] Hata: Erişim engellendi.');
-        const command = `tail -f "${fullPath}"`;
-        sshConnection.exec(command, (err, stream) => {
-            if (err) return ws.send(`[SYSTEM] Hata: ${err.message}`);
-            console.log(`'${filePath}' için tail -f başlatıldı.`);
-            currentStream = stream;
-            stream.on('data', data => { if (ws.readyState === WebSocket.OPEN) ws.send(data.toString()); })
-                  .stderr.on('data', data => { if (ws.readyState === WebSocket.OPEN) ws.send(`[SYSTEM] Hata: ${data.toString()}`); })
-                  .on('close', () => {
-                      console.log(`'${filePath}' için tail -f sonlandı.`);
-                      if (currentStream === stream) currentStream = null;
-                      if (ws.readyState === WebSocket.OPEN) ws.send('[SYSTEM] Log akışı sonlandı.');
-                  })
-                  .on('error', (streamErr) => {
-                      console.error(`Tail stream hatası (${filePath}):`, streamErr);
-                      if (currentStream === stream) currentStream = null;
-                      if (ws.readyState === WebSocket.OPEN) ws.send(`[SYSTEM] Log akışı hatası: ${streamErr.message}`);
-                  });
+    let currentStream = null;
+    let currentServerId = null;
+    let currentFilePath = null;
+    let currentSettings = null;
+    let alarmCache = []; // { raw: string, regex: RegExp }[]
+
+    // Bildirimleri paralel gönder
+    const checkAndNotify = async (logLine) => {
+        if (!currentSettings || !currentSettings.alarms || currentSettings.alarms.length === 0) return;
+        let matched = false, matchedAlarm = null;
+        for (const alarm of alarmCache) {
+             if (alarm.regex.test(logLine)) { matched = true; matchedAlarm = alarm.raw; break; }
+        }
+        if (!matched) return;
+
+        console.log(`ALARM TETİKLENDİ: Sunucu ${currentServerId}, Kural: ${matchedAlarm}`);
+
+        const notificationPromises = [];
+
+        if (currentSettings.notifications.browser.enabled) {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ALARM', alarm: matchedAlarm, line: logLine }));
+            }
+        }
+
+        const emailSettings = currentSettings.notifications.email;
+        if (emailSettings.enabled && emailSettings.smtpHost && emailSettings.to && emailSettings.smtpUser && emailSettings.smtpPass) {
+            notificationPromises.push((async () => {
+                try {
+                    const decryptedPass = decrypt(emailSettings.smtpPass);
+                    if (!decryptedPass) throw new Error("SMTP parolası şifreli ama boş veya geçersiz.");
+                    let transporter = nodemailer.createTransport({
+                        host: emailSettings.smtpHost, port: emailSettings.smtpPort, secure: emailSettings.smtpPort === 465,
+                        auth: { user: emailSettings.smtpUser, pass: decryptedPass },
+                    });
+                    await transporter.sendMail({
+                        from: `"Log Yöneticisi" <${emailSettings.smtpUser}>`, to: emailSettings.to, subject: `Log Alarmı: "${matchedAlarm}"`,
+                        text: `Merhaba,\n\nİzlediğiniz ${currentFilePath} dosyasında bir alarm tetiklendi.\n\nKural: ${matchedAlarm}\nSatır: ${logLine}`,
+                        html: `<p>Merhaba,</p><p>İzlediğiniz <strong>${currentFilePath}</strong> dosyasında bir alarm tetiklendi.</p><p><b>Kural:</b> ${matchedAlarm}</p><p><b>Satır:</b></p><pre>${logLine}</pre>`,
+                    });
+                    console.log("E-posta bildirimi gönderildi.");
+                } catch (emailError) { console.error("E-posta gönderme hatası:", emailError.message); }
+            })());
+        } else if (emailSettings.enabled) {
+            console.warn("E-posta bildirimi etkin ancak SMTP bilgileri (host, to, user, pass) eksik. E-posta gönderilemedi.");
+        }
+
+        const webhookSettings = currentSettings.notifications.webhook;
+        if (webhookSettings.enabled && webhookSettings.url) {
+             notificationPromises.push((async () => {
+                 try {
+                     const webhookUrl = decrypt(webhookSettings.url);
+                     if (!webhookUrl) throw new Error("Webhook URL'si şifreli ama boş veya geçersiz.");
+                     const server = await serversCollection.doc(currentServerId).get();
+                     const serverName = server.exists ? server.data().name : currentServerId;
+                     const payload = { content: `🚨 **Log Alarmı Tetiklendi!** 🚨\n**Sunucu:** ${serverName}\n**Dosya:** \`${currentFilePath}\`\n**Kural:** \`${matchedAlarm}\`\n\`\`\`${logLine}\`\`\`` };
+                     await axios.post(webhookUrl, payload);
+                     console.log("Webhook bildirimi gönderildi.");
+                 } catch (webhookError) { console.error("Webhook gönderme hatası:", webhookError.message); }
+             })());
+        }
+        
+        Promise.allSettled(notificationPromises).then(results => {
+            results.forEach(result => { if (result.status === 'rejected') console.error("Bir bildirim gönderimi başarısız oldu:", result.reason); });
         });
+    };
+
+    ws.on('message', async message => {
+        let msg;
+        try { msg = JSON.parse(message.toString()); } catch (e) { return; }
+        
+        if (msg.type === 'START_STREAM') {
+            currentServerId = msg.serverId;
+            currentFilePath = msg.filePath;
+            console.log(`İzleme isteği alındı: Sunucu ${currentServerId}, Dosya ${currentFilePath}`);
+            
+            try {
+                const settingsDoc = await settingsCollection.doc(currentServerId).get();
+                if (settingsDoc.exists) {
+                    currentSettings = settingsDoc.data();
+                    alarmCache = (currentSettings.alarms || []).map(alarm => {
+                        let regex;
+                        let isRegex = alarm.startsWith('/') && alarm.endsWith('/');
+                        try {
+                            if (isRegex) {
+                                regex = new RegExp(alarm.slice(1, -1), 'i');
+                            } else {
+                                const escapedAlarm = alarm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                                regex = new RegExp(escapedAlarm, 'i');
+                            }
+                            return { raw: alarm, regex: regex };
+                        } catch (e) {
+                            console.warn(`Geçersiz alarm kuralı: "${alarm}". Yoksayılıyor.`);
+                            return null;
+                        }
+                    }).filter(Boolean);
+                    
+                } else {
+                    currentSettings = { alarms: [], notifications: { browser: { enabled: true }, email: { enabled: false }, webhook: { enabled: false } } };
+                    alarmCache = [];
+                }
+            } catch (e) {
+                console.error("Ayarları yüklerken hata:", e);
+                ws.send(JSON.stringify({ type: 'LOG', line: `[SYSTEM] Hata: Sunucu ayarları yüklenemedi: ${e.message}` }));
+            }
+
+            if (currentStream) { try { currentStream.close(); } catch (e) {} }
+            if (!sshConnection) return ws.send(JSON.stringify({ type: 'LOG', line: '[SYSTEM] Hata: Aktif SSH bağlantısı yok.'}));
+            
+            const fullPath = path.resolve(currentFilePath);
+            if (!fullPath.startsWith(path.resolve(BASE_LOG_DIR))) return ws.send(JSON.stringify({ type: 'LOG', line: '[SYSTEM] Hata: Erişim engellendi.'}));
+
+            const command = `tail -f "${fullPath}"`;
+            sshConnection.exec(command, (err, stream) => {
+                if (err) return ws.send(JSON.stringify({ type: 'LOG', line: `[SYSTEM] Hata: ${err.message}`}));
+                console.log(`'${fullPath}' için tail -f başlatıldı.`);
+                currentStream = stream;
+                
+                stream.on('data', data => {
+                    const lines = data.toString().split('\n').filter(Boolean);
+                    lines.forEach(line => {
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: 'LOG', line: line }));
+                        }
+                        checkAndNotify(line);
+                    });
+                })
+                .stderr.on('data', data => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'LOG', line: `[SYSTEM] Hata: ${data.toString()}`})); })
+                .on('close', () => {
+                    console.log(`'${fullPath}' için tail -f sonlandı.`);
+                    if (currentStream === stream) currentStream = null;
+                    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'LOG', line: '[SYSTEM] Log akışı sonlandı.'}));
+                })
+                .on('error', (streamErr) => {
+                    console.error(`Tail stream hatası (${fullPath}):`, streamErr);
+                    if (currentStream === stream) currentStream = null;
+                    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'LOG', line: `[SYSTEM] Log akışı hatası: ${streamErr.message}`}));
+                });
+            });
+        }
     });
+
     ws.on('close', () => {
         console.log('WebSocket istemcisi ayrıldı.');
         if (currentStream) { try { currentStream.close(); } catch (e) {} currentStream = null; }
+        activeStreams.delete(ws);
     });
     ws.on('error', (error) => {
         console.error('WebSocket hatası:', error);
         if (currentStream) { try { currentStream.close(); } catch (e) {} currentStream = null; }
+        activeStreams.delete(ws);
     });
+
+    activeStreams.set(ws, { stream: null, serverId: null, filePath: null });
 });
 
 // Sunucuyu başlat
