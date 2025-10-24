@@ -21,6 +21,7 @@
         .log-line.warn { border-left-color: #f59e0b; color: #fbbf24; }
         .log-line.success { border-left-color: #22c55e; color: #4ade80; }
         .log-line.info { border-left-color: #3b82f6; color: #60a5fa; }
+        .log-line.alarm-match { background-color: rgba(239, 68, 68, 0.2); border-left-color: #ef4444; } /* Tetiklenen alarm satırı */
 
         mark { background-color: #f59e0b; color: #1e293b; padding: 0 2px; border-radius: 3px; }
 
@@ -39,6 +40,10 @@
         .form-checkbox:focus { --tw-ring-color: #06b6d4; }
         .form-checkbox:checked { background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e"); }
         #regex-error { font-size: 0.75rem; line-height: 1rem; }
+        .alarm-item { transition: background-color 0.2s ease-in-out; }
+        .alarm-item:hover { background-color: rgba(255, 255, 255, 0.05); }
+        .remove-alarm-btn { opacity: 0; transition: opacity 0.2s ease-in-out; }
+        .alarm-item:hover .remove-alarm-btn { opacity: 1; }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-300 font-sans flex items-center justify-center min-h-screen p-2 sm:p-4">
@@ -94,6 +99,9 @@
                     <button id="disconnect-btn-viewer" class="w-full sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-500 rounded-md font-bold text-white">Bağlantıyı Kes</button>
                 </div>
             </header>
+            
+            <!-- ALARM BÖLÜMÜ ARTIK "AYARLAR" MODALINDA -->
+
             <main id="log-container" class="flex-1 p-2 sm:p-4 overflow-y-auto font-mono text-xs sm:text-sm bg-slate-900"></main>
         </div>
     </div>
@@ -132,24 +140,100 @@
             </form>
         </div>
     </div>
+    
+    <!-- YENİ: Ayarlar & Alarmlar Modalı -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 fade-in">
+        <div class="bg-slate-800 rounded-lg shadow-xl w-full max-w-3xl h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center p-4 border-b border-slate-700">
+                <h3 class="text-xl font-bold text-cyan-400">Ayarlar ve Alarmlar</h3>
+                <button id="close-settings-modal-btn" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            
+            <div class="flex-1 flex flex-col md:flex-row gap-6 p-6 overflow-y-auto">
+                <div class="w-full md:w-1/2 space-y-4">
+                    <!-- YENİ: Arkaplanda İzlenecek Dosyalar -->
+                    <h4 class="text-lg font-semibold text-white">Arkaplanda İzlenecek Dosyalar</h4>
+                    <p class="text-sm text-slate-400">Arkaplanda 7/24 izlenmesini ve alarm verilmesini istediğiniz log dosyalarının tam yolunu ekleyin.</p>
+                    <form id="add-monitored-file-form" class="flex gap-2">
+                        <input type="text" id="monitored-file-input" placeholder="/var/log/auth.log" class="flex-grow p-2 bg-slate-700 rounded-md border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm">
+                        <button type="submit" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-md text-sm flex-shrink-0">Ekle</button>
+                    </form>
+                    <div id="monitored-file-list" class="max-h-32 overflow-y-auto bg-slate-700/50 rounded-md p-2 space-y-1 text-sm">
+                        <!-- İzlenen dosyalar buraya eklenecek -->
+                    </div>
+
+                    <h4 class="text-lg font-semibold text-white mt-4">Alarm Kuralları</h4>
+                    <p class="text-sm text-slate-400">İzlenen dosyalarda bu kelimelerden veya Regex desenlerinden biri bulunduğunda bildirim gönder.</p>
+                    <form id="add-alarm-form" class="flex gap-2">
+                        <input type="text" id="alarm-input" placeholder="Örn: fatal, /error \d+/" class="flex-grow p-2 bg-slate-700 rounded-md border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm">
+                        <button type="submit" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-md text-sm flex-shrink-0">Ekle</button>
+                    </form>
+                    <p id="alarm-regex-error" class="text-red-400 h-4 mt-1 text-xs"></p>
+                    <div id="alarm-list" class="max-h-32 overflow-y-auto bg-slate-700/50 rounded-md p-2 space-y-1 text-sm">
+                    </div>
+                </div>
+                <div class="w-full md:w-1/2 space-y-4">
+                    <h4 class="text-lg font-semibold text-white">Bildirim Kanalları</h4>
+                    <p class="text-sm text-slate-400">Arkaplan alarmları tetiklendiğinde bildirim almak istediğiniz kanalları seçin.</p>
+                    
+                    <form id="notification-settings-form" class="space-y-4">
+                        <div class="bg-slate-700/50 p-3 rounded-md"> <label class="flex items-center gap-2 text-white font-medium cursor-pointer"> <input type="checkbox" name="browser_enabled" class="form-checkbox h-5 w-5"> Tarayıcı Bildirimi (Sadece logu izlerken)</label> </div>
+                        <div class="bg-slate-700/50 p-3 rounded-md space-y-2">
+                            <label class="flex items-center gap-2 text-white font-medium cursor-pointer"> <input type="checkbox" name="email_enabled" id="email-toggle-cb" class="form-checkbox h-5 w-5"> E-posta Bildirimi (7/24)</label>
+                            <div id="email-settings-fields" class="space-y-2 hidden">
+                                <input type="email" name="email_to" placeholder="Alıcı E-posta Adresi" class="w-full p-2 bg-slate-700 rounded-md border border-slate-600 text-sm">
+                                <input type="text" name="email_smtpHost" placeholder="SMTP Sunucusu" class="w-full p-2 bg-slate-700 rounded-md border border-slate-600 text-sm">
+                                <input type="number" name="email_smtpPort" placeholder="Port (587)" class="w-full p-2 bg-slate-700 rounded-md border border-slate-600 text-sm">
+                                <input type="text" name="email_smtpUser" placeholder="SMTP Kullanıcı Adı (Genellikle e-posta)" class="w-full p-2 bg-slate-700 rounded-md border border-slate-600 text-sm">
+                                <input type="password" name="email_smtpPass" placeholder="SMTP Parolası" class="w-full p-2 bg-slate-700 rounded-md border border-slate-600 text-sm">
+                            </div>
+                        </div>
+                        <div class="bg-slate-700/50 p-3 rounded-md space-y-2">
+                            <label class="flex items-center gap-2 text-white font-medium cursor-pointer"> <input type="checkbox" name="webhook_enabled" id="webhook-toggle-cb" class="form-checkbox h-5 w-5"> Webhook (7/24) (Discord, Slack vb.)</label>
+                            <div id="webhook-settings-fields" class="space-y-2 hidden"> <input type="url" name="webhook_url" placeholder="Webhook URL" class="w-full p-2 bg-slate-700 rounded-md border border-slate-600 text-sm"> </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="flex justify-end gap-4 p-4 border-t border-slate-700">
+                <button type="button" id="cancel-settings-btn" class="px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded-md font-bold text-white">İptal</button>
+                <button type="button" id="save-settings-btn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-md font-bold text-white">Ayarları Kaydet</button>
+            </div>
+        </div>
+    </div>
 
     <!-- DÜZELTME: Tüm JavaScript kodu tek bir script bloğunda -->
     <script>
         // DOM Elementleri
         const serverDashboardScreen=document.getElementById("server-dashboard-screen"),logSelectScreen=document.getElementById("log-select-screen"),logViewerScreen=document.getElementById("log-viewer-screen"),serverListContainer=document.getElementById("server-list-container"),addServerModal=document.getElementById("add-server-modal"),showAddServerModalBtn=document.getElementById("show-add-server-modal-btn"),closeAddServerModalBtn=document.getElementById("close-add-server-modal-btn"),cancelAddServerBtn=document.getElementById("cancel-add-server-btn"),addServerForm=document.getElementById("add-server-form"),addServerError=document.getElementById("add-server-error"),serverIpSelect=document.getElementById("server-ip-select"),serverIpViewer=document.getElementById("server-ip-viewer"),currentPathSpan=document.getElementById("current-path"),logFileName=document.getElementById("log-file-name"),logListContainer=document.getElementById("log-list-container"),logContainer=document.getElementById("log-container"),filterInput=document.getElementById("filter-input"),pauseResumeBtn=document.getElementById("pause-resume-btn"),backToSelectBtn=document.getElementById("back-to-select-btn"),disconnectBtnSelect=document.getElementById("disconnect-btn-select"),disconnectBtnViewer=document.getElementById("disconnect-btn-viewer"),exportLogsBtn=document.getElementById("export-logs-btn"),authTypeRadios=addServerForm.querySelectorAll('input[name="authType"]'),passwordFieldContainer=document.getElementById("password-field-container"),privateKeyFieldContainer=document.getElementById("private-key-field-container"),passwordInput=addServerForm.querySelector('input[name="pass"]'),privateKeyTextarea=addServerForm.querySelector('textarea[name="privateKey"]'),statusUptime=document.getElementById("status-uptime"),statusDiskDetails=document.getElementById("status-disk-details"),statusDiskBar=document.getElementById("status-disk-bar"),statusMemDetails=document.getElementById("status-mem-details"),statusMemBar=document.getElementById("status-mem-bar"),statusCpuDetails=document.getElementById("status-cpu-details"),statusCpuBar=document.getElementById("status-cpu-bar"), regexToggle = document.getElementById('regex-toggle'), regexError = document.getElementById('regex-error'), clearLogsBtn = document.getElementById('clear-logs-btn');
         const editServerModal=document.getElementById("edit-server-modal"), closeEditServerModalBtn=document.getElementById("close-edit-server-modal-btn"), cancelEditServerBtn=document.getElementById("cancel-edit-server-btn"), editServerForm=document.getElementById("edit-server-form"), editServerError=document.getElementById("edit-server-error"), editAuthTypeRadios=editServerForm.querySelectorAll('input[name="authType"]'), editPasswordFieldContainer=document.getElementById("edit-password-field-container"), editPrivateKeyFieldContainer=document.getElementById("edit-private-key-field-container"), editPasswordInput=editServerForm.querySelector('input[name="pass"]'), editPrivateKeyTextarea=editServerForm.querySelector('textarea[name="privateKey"]');
+        
+        // YENİ: Ayarlar/Alarmlar Elementleri
+        const settingsModal = document.getElementById('settings-modal'), closeSettingsModalBtn = document.getElementById('close-settings-modal-btn'), cancelSettingsBtn = document.getElementById('cancel-settings-btn'), saveSettingsBtn = document.getElementById('save-settings-btn');
+        const addAlarmForm = document.getElementById('add-alarm-form'), alarmInput = document.getElementById('alarm-input'), alarmList = document.getElementById('alarm-list'), alarmRegexError = document.getElementById('alarm-regex-error');
+        const addMonitoredFileForm = document.getElementById('add-monitored-file-form'), monitoredFileInput = document.getElementById('monitored-file-input'), monitoredFileList = document.getElementById('monitored-file-list');
+        const notificationSettingsForm = document.getElementById('notification-settings-form'), emailToggleCb = document.getElementById('email-toggle-cb'), emailSettingsFields = document.getElementById('email-settings-fields'), webhookToggleCb = document.getElementById('webhook-toggle-cb'), webhookSettingsFields = document.getElementById('webhook-settings-fields');
 
         const apiUrl="https://backend.mhtest.info.tr",wsUrl="wss://backend.mhtest.info.tr";
         let logSocket=null,isPaused=!1,currentIp="",currentPath="/";
         let statusIntervalId = null;
         let serversCache = [];
+        let notificationPermission = 'default';
+        let currentSettingsServerId = null;
+        let activeAlarms = []; // Ayarlar modalı için geçici array
+        let activeMonitoredFiles = []; // Ayarlar modalı için geçici array
+        let currentActiveServerId = null;
 
+        // --- Fonksiyon Tanımlamaları ---
         const showToast=(e,t="success")=>{const s=document.getElementById("toast-container"),o=document.createElement("div");let n,a,d;t==="success"?(n="bg-green-600",a="text-white",d='<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'):(n="bg-red-600",a="text-white",d='<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'),o.className=`p-4 rounded-lg shadow-lg flex items-center gap-3 ${n} ${a} toast-animation`,o.innerHTML=`<div>${d}</div> <div>${e}</div>`,s.appendChild(o),setTimeout(()=>{o.remove()},4e3)};
         const showScreen=e=>{console.log("Showing screen:", e.id); if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; console.log("Server status interval cleared."); } serverDashboardScreen.classList.add("hidden");logSelectScreen.classList.add("hidden");logViewerScreen.classList.add("hidden");e.classList.remove("hidden"); if (e.id === 'log-select-screen' && !statusIntervalId) { console.log("Starting server status interval..."); statusIntervalId = setInterval(loadServerStatus, 10000); }};
         const loadServers=async()=>{console.log("Loading servers..."); serverListContainer.innerHTML='<div class="text-center text-slate-400">Sunucular yükleniyor...</div>';try{const e=await fetch(`${apiUrl}/servers`),t=await e.json();if(!t.success)throw new Error(t.message);console.log("Servers loaded:", t.servers); serversCache = t.servers; serverListContainer.innerHTML="",t.servers.length===0?serverListContainer.innerHTML='<div class="text-center text-slate-500 p-8 border-2 border-dashed border-slate-700 rounded-lg">Kayıtlı sunucu bulunamadı. Lütfen yeni bir sunucu ekleyin.</div>':t.servers.forEach(e=>{serverListContainer.innerHTML+=createServerCardHTML(e)})}catch(e){console.error("Error loading servers:", e); serverListContainer.innerHTML=`<div class="text-center text-red-400">Hata: Sunucular yüklenemedi. ${e.message}</div>`}};
-        const createServerCardHTML=e=>{const t=e.port||22;return`<div class="bg-slate-700/50 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"><div class="min-w-0"><p class="text-lg font-bold text-cyan-400 truncate">${e.name}</p><p class="text-sm text-slate-400 font-mono truncate">${e.ip}:${t}</p></div><div class="flex items-center gap-2 flex-shrink-0"><button data-id="${e.id}" data-ip="${e.ip}" class="connect-btn w-1/3 sm:w-auto px-4 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-md">Bağlan</button><button data-id="${e.id}" class="edit-btn w-1/3 sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-md">Düzenle</button><button data-id="${e.id}" class="delete-btn w-1/3 sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-md">Sil</button></div></div>`};
-        const handleConnect=async(e,t)=>{console.log(`Connecting to server: ${e} (${t})`); currentIp=t;const s=document.querySelector(`.connect-btn[data-id="${e}"]`),o=s.innerHTML;s.innerHTML='<span class="spinner mr-2"></span>Bağlanılıyor...',s.disabled=!0;try{const t=await fetch(`${apiUrl}/connect`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({serverId:e})});console.log("Connect response status:", t.status); if(!t.ok){const e=await t.json();console.error("Connect error data:", e); throw new Error(e.message||"Bağlantı başarısız oldu.")}const n=await t.json();console.log("Connect response data:", n); if(n.success)currentPath="/",await renderBrowser(currentPath);else throw new Error(n.message)}catch(e){console.error("Connect failed:", e); showToast(`Bağlanılamadı: ${e.message}`,"error")}finally{s.innerHTML=o,s.disabled=!1}};
-        const handleDelete=async e=>{if(!confirm("Bu sunucuyu silmek istediğinizden emin misiniz?"))return;try{const t=await fetch(`${apiUrl}/servers/${e}`,{method:"DELETE"});if(!t.ok)throw new Error("Sunucu silinemedi.");showToast("Sunucu başarıyla silindi.","success"),await loadServers()}catch(e){console.error("Delete failed:", e); showToast(`Hata: ${e.message}`,"error")}};
+        
+        // GÜNCELLENDİ: createServerCardHTML (4 butonlu)
+        const createServerCardHTML=e=>{const t=e.port||22;return`<div class="bg-slate-700/50 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"><div class="min-w-0"><p class="text-lg font-bold text-cyan-400 truncate">${e.name}</p><p class="text-sm text-slate-400 font-mono truncate">${e.ip}:${t}</p></div><div class="flex items-center gap-2 flex-shrink-0"><button data-id="${e.id}" data-ip="${e.ip}" class="connect-btn w-1/4 sm:w-auto px-4 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-md">Bağlan</button><button data-id="${e.id}" class="settings-btn w-1/4 sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-md">Ayarlar</button><button data-id="${e.id}" class="edit-btn w-1/4 sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-md">Düzenle</button><button data-id="${e.id}" class="delete-btn w-1/4 sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-md">Sil</button></div></div>`};
+        
+        const handleConnect=async(e,t)=>{console.log(`Connecting to server: ${e} (${t})`); currentIp=t; currentActiveServerId = e; const s=document.querySelector(`.connect-btn[data-id="${e}"]`),o=s.innerHTML;s.innerHTML='<span class="spinner mr-2"></span>Bağlanılıyor...',s.disabled=!0;try{const t=await fetch(`${apiUrl}/connect`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({serverId:e})});console.log("Connect response status:", t.status); if(!t.ok){const e=await t.json();console.error("Connect error data:", e); throw new Error(e.message||"Bağlantı başarısız oldu.")}const n=await t.json();console.log("Connect response data:", n); if(n.success)currentIp=n.ip||t,currentPath="/",await renderBrowser(currentPath);else throw new Error(n.message)}catch(e){console.error("Connect failed:", e); showToast(`Bağlanılamadı: ${e.message}`,"error"); currentActiveServerId = null; }finally{s.innerHTML=o,s.disabled=!1}};
+        const handleDelete=async e=>{if(!confirm("Bu sunucuyu ve tüm ayarlarını silmek istediğinizden emin misiniz?"))return;try{const t=await fetch(`${apiUrl}/servers/${e}`,{method:"DELETE"});if(!t.ok)throw new Error("Sunucu silinemedi.");showToast("Sunucu başarıyla silindi.","success"),await loadServers()}catch(e){console.error("Delete failed:", e); showToast(`Hata: ${e.message}`,"error")}};
         const handleAddServer=async e=>{e.preventDefault(),addServerError.textContent="";const t=new FormData(e.target),s=Object.fromEntries(t.entries());const o=addServerForm.querySelector('button[type="submit"]'),n=o.innerHTML;o.innerHTML='<span class="spinner mr-2"></span>Kaydediliyor...',o.disabled=!0;try{const e=await fetch(`${apiUrl}/servers`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(s)}),t=await e.json();if(!e.ok)throw new Error(t.message||"Bir hata oluştu.");addServerModal.classList.add("hidden"),showToast("Sunucu başarıyla eklendi.","success"),await loadServers()}catch(e){console.error("Add server failed:", e); addServerError.textContent=`Hata: ${e.message}`}finally{o.innerHTML=n,o.disabled=!1}};
         const toggleAuthFields=()=>{const e=addServerForm.querySelector('input[name="authType"]:checked').value;"password"===e?(passwordFieldContainer.classList.remove("hidden"),privateKeyFieldContainer.classList.add("hidden"),passwordInput.required=!0,privateKeyTextarea.required=!1):(passwordFieldContainer.classList.add("hidden"),privateKeyFieldContainer.classList.remove("hidden"),passwordInput.required=!1,privateKeyTextarea.required=!0)};
         const openAddServerModal=()=>{addServerForm.reset(),addServerError.textContent="",toggleAuthFields(),addServerModal.classList.remove("hidden")};
@@ -159,26 +243,96 @@
         const loadServerStatus=async()=>{if (logSelectScreen.classList.contains('hidden')) { console.log("Skipping status update: Log select screen not active."); if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; } return; } console.log("Fetching server status..."); const isInitialLoad = statusUptime.textContent === 'Yükleniyor...'; if (!isInitialLoad) { console.log("Refreshing status..."); } else { statusUptime.textContent="Yükleniyor...";statusCpuDetails.textContent="...";statusMemDetails.textContent="...";statusDiskDetails.textContent="...";statusCpuBar.style.width="0%";statusMemBar.style.width="0%";statusDiskBar.style.width="0%"; } try{ const e=await fetch(`${apiUrl}/server-status`),t=await e.json();console.log("Server status response:", t); if(!t.success)throw new Error(t.message);const{uptime:s,disk:o,memory:n,cpu:a}=t.status;statusUptime.textContent=s,statusCpuDetails.textContent=a.percent,statusCpuBar.style.width=a.percent,statusMemDetails.textContent=`${n.used} / ${n.total} (${n.percent})`,statusMemBar.style.width=n.percent,statusDiskDetails.textContent=`${o.used} / ${o.total} (${o.percent})`,statusDiskBar.style.width=o.percent}catch(e){ console.error("Error loading server status:", e); if (isInitialLoad) statusUptime.textContent="Hata"; console.warn(`Sunucu durumu yenilenemedi: ${e.message}`); }};
         const renderBrowser=async e=>{console.log(`Rendering browser for path: ${e}`); currentPath=e,logListContainer.innerHTML='<div class="text-center text-slate-400">Yükleniyor...</div>',currentPathSpan.textContent=`/var/log${e==="/"?"":e}`; if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; console.log("Cleared interval before loading browser content."); } loadServerStatus(); try{ console.log(`Fetching /browse for path: ${currentPath}`); const t=await fetch(`${apiUrl}/browse`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:currentPath})});console.log(`/browse response status: ${t.status}`); const s=await t.json();console.log(`/browse response data:`, s); if(!s.success)throw new Error(s.message); logListContainer.innerHTML=""; if(currentPath!=="/"){const e=currentPath.split("/").filter(e=>e.length>0);e.pop();const t="/"+e.join("/")+(e.length>0?"/":"");logListContainer.innerHTML+=createItemElement({name:"../",type:"directory"},t);console.log("Added back button to:", t)} s.items.sort((e,t)=>e.type==="directory"&&t.type!=="directory"?-1:e.type!=="directory"&&t.type==="directory"?1:e.name.localeCompare(t.name)),s.items.forEach(e=>{logListContainer.innerHTML+=createItemElement(e)}); console.log(`Rendered ${s.items.length} items.`); serverIpSelect.textContent=currentIp; showScreen(logSelectScreen); console.log("Log select screen shown."); }catch(e){ console.error(`Error in renderBrowser for path ${e}:`, e); logListContainer.innerHTML=`<div class="text-center text-red-400">Hata: ${e.message}</div>`; showScreen(logSelectScreen); }};
         const createItemElement=(e,t=null)=>{const s=e.type==="directory",o=e.name,n=null!==t?t:`${currentPath}${o}`,a=`/var/log${currentPath}${o}`.replace("//","/"),d=s?'<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>':'<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>',r=s?"":`<button data-file="${a}" class="watch-btn px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-md text-sm">İzle</button>`,i=s?"cursor-pointer":"";return`<div data-path="${n}" data-type="${e.type}" class="browser-item flex justify-between items-center p-3 mb-2 bg-slate-800 rounded-md hover:bg-slate-700 transition-colors ${i}"><div class="flex items-center gap-3 min-w-0">${d}<span class="font-mono text-slate-300 truncate">${o}</span></div>${r}</div>`};
-        const startLogStream=async e=>{ if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; console.log("Cleared status interval before starting log stream."); } logContainer.innerHTML='<div class="text-center text-slate-400 p-4">Geçmiş loglar yükleniyor...</div>',isPaused=!1,filterInput.value="",pauseResumeBtn.textContent="Durdur",pauseResumeBtn.classList.remove("bg-green-600","hover:bg-green-500"),pauseResumeBtn.classList.add("bg-amber-600","hover:bg-amber-500"),serverIpViewer.textContent=currentIp,logFileName.textContent=e,showScreen(logViewerScreen);try{const t=await fetch(`${apiUrl}/history`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({filePath:e,lines:200})}),s=await t.json();logContainer.innerHTML="",s.success&&s.history.length>0?((()=>{const e=document.createElement("div");e.className="text-center text-cyan-400/50 py-2 text-xs font-mono",e.textContent="--- SON 200 LOG SATIRI ---",logContainer.appendChild(e)})(),s.history.forEach(e=>appendLog(e))):s.success||appendLog(`[SYSTEM] Geçmiş loglar yüklenemedi: ${s.message}`)}catch(e){logContainer.innerHTML="",appendLog(`[SYSTEM] Geçmiş logları yüklerken ağ hatası: ${e.message}`)}const t=document.createElement("div");t.className="text-center text-green-400/50 py-2 text-xs font-mono",t.textContent="--- CANLI LOG AKIŞI BAŞLADI ---",logContainer.appendChild(t),logContainer.scrollTop=logContainer.scrollHeight,logSocket&&logSocket.close(),logSocket=new WebSocket(wsUrl),logSocket.onopen=()=>logSocket.send(e),logSocket.onmessage=e=>{isPaused||appendLog(e.data)},logSocket.onerror=e=>appendLog("[SYSTEM] WebSocket bağlantı hatası."),logSocket.onclose=()=>{document.body.contains(logViewerScreen)&&!logViewerScreen.classList.contains("hidden")&&appendLog("[SYSTEM] Sunucu ile bağlantı kesildi.")}};
+        const startLogStream=async e=>{ if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; console.log("Cleared status interval before starting log stream."); } if (!("Notification" in window)) { notificationPermission = 'denied'; } else { notificationPermission = Notification.permission; } if (notificationPermission === 'default') { requestNotificationPermission(); } logContainer.innerHTML='<div class="text-center text-slate-400 p-4">Geçmiş loglar yükleniyor...</div>',isPaused=!1,filterInput.value="",pauseResumeBtn.textContent="Durdur",pauseResumeBtn.classList.remove("bg-green-600","hover:bg-green-500"),pauseResumeBtn.classList.add("bg-amber-600","hover:bg-amber-500"),serverIpViewer.textContent=currentIp,logFileName.textContent=e,showScreen(logViewerScreen);try{const t=await fetch(`${apiUrl}/history`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({filePath:e,lines:200})}),s=await t.json();logContainer.innerHTML="",s.success&&s.history.length>0?((()=>{const e=document.createElement("div");e.className="text-center text-cyan-400/50 py-2 text-xs font-mono",e.textContent="--- SON 200 LOG SATIRI ---",logContainer.appendChild(e)})(),s.history.forEach(e=>appendLog(e, !1))):s.success||appendLog(`[SYSTEM] Geçmiş loglar yüklenemedi: ${s.message}`)}catch(e){logContainer.innerHTML="",appendLog(`[SYSTEM] Geçmiş logları yüklerken ağ hatası: ${e.message}`)}const t=document.createElement("div");t.className="text-center text-green-400/50 py-2 text-xs font-mono",t.textContent="--- CANLI LOG AKIŞI BAŞLADI ---",logContainer.appendChild(t),logContainer.scrollTop=logContainer.scrollHeight,logSocket&&logSocket.close(),logSocket=new WebSocket(wsUrl),logSocket.onopen=()=>{console.log("WebSocket bağlantısı açıldı."); if (!currentActiveServerId) { console.error("Geçerli sunucu ID'si bulunamadı! (currentActiveServerId boş)"); appendLog("[SYSTEM] Hata: Sunucu ID'si bulunamadı, bağlantı kurulamıyor."); return; } logSocket.send(JSON.stringify({type:"START_STREAM",serverId:currentActiveServerId,filePath:e}))},logSocket.onmessage=e=>{if(isPaused)return;let t;try{t=JSON.parse(e.data)}catch(e){console.error("Geçersiz WebSocket mesajı:",e.data);return}t.type==="LOG"?appendLog(t.line,!1):t.type==="ALARM"&&(console.log("Tarayıcı bildirimi tetikleniyor:",t.alarm),showBrowserNotification(t.alarm,t.line),appendLog(t.line,!0))},logSocket.onerror=e=>appendLog("[SYSTEM] WebSocket bağlantı hatası."),logSocket.onclose=()=>{document.body.contains(logViewerScreen)&&!logViewerScreen.classList.contains("hidden")&&appendLog("[SYSTEM] Sunucu ile bağlantı kesildi.")}};
         const highlightText=(e,t)=>{if(!t)return e;const s=regexToggle.checked;let o;regexError.textContent="";try{return o=s?new RegExp(t,"gi"):new RegExp(t.replace(/[-\/\\^$*+?.()|[\]{}]/g,"\\$&"),"gi"),e.replace(o,e=>`<mark>${e}</mark>`)}catch(e){return s&&(regexError.textContent="Geçersiz Regex!"),e}};
-        const appendLog=e=>{const t=logContainer.scrollHeight-logContainer.clientHeight<=logContainer.scrollTop+20,s=document.createElement("div");s.className="log-line whitespace-pre-wrap";const o=e.toLowerCase();o.includes("error")||o.includes("failed")?s.classList.add("error"):o.includes("warn")?s.classList.add("warn"):o.includes("success")?s.classList.add("success"):o.includes("info")&&s.classList.add("info");const n=filterInput.value;s.innerHTML=highlightText(e,n);let a=!1;if(!n)a=!0;else{const t=regexToggle.checked;try{const s=t?new RegExp(n,"i"):new RegExp(n.replace(/[-\/\\^$*+?.()|[\]{}]/g,"\\$&"),"i");a=s.test(e)}catch(e){a=!t&&o.includes(n.toLowerCase())}}a||(s.style.display="none"),logContainer.appendChild(s),t&&(logContainer.scrollTop=logContainer.scrollHeight)};
+        const appendLog=(e,t=!1)=>{const s=logContainer.scrollHeight-logContainer.clientHeight<=logContainer.scrollTop+20,o=document.createElement("div");o.className="log-line whitespace-pre-wrap";const n=e.toLowerCase();t?o.classList.add("error","log-line.alarm-match"):n.includes("error")||n.includes("failed")?o.classList.add("error"):n.includes("warn")?o.classList.add("warn"):n.includes("success")?o.classList.add("success"):n.includes("info")&&s.classList.add("info");const a=filterInput.value;o.innerHTML=highlightText(e,a);let d=!1;if(!a)d=!0;else{const t=regexToggle.checked;try{const s=t?new RegExp(a,"i"):new RegExp(a.replace(/[-\/\\^$*+?.()|[\]{}]/g,"\\$&"),"i");d=s.test(e)}catch(e){d=!t&&n.includes(a.toLowerCase())}}d||(o.style.display="none"),logContainer.appendChild(o),s&&(logContainer.scrollTop=logContainer.scrollHeight)};
         const applyFilterAndHighlight=()=>{const e=filterInput.value,t=logContainer.getElementsByClassName("log-line"),s=regexToggle.checked;let o,n=!0;regexError.textContent="";try{e&&(o=s?new RegExp(e,"gi"):new RegExp(e.replace(/[-\/\\^$*+?.()|[\]{}]/g,"\\$&"),"gi"))}catch(e){s&&(regexError.textContent="Geçersiz Regex!",n=!1)}for(let r of t){const t=r.textContent;let i=!1;!e?i=!0:n?i=o.test(t):i=!s&&t.toLowerCase().includes(e.toLowerCase()),i?(r.style.display="block",e&&n?r.innerHTML=t.replace(o,e=>`<mark>${e}</mark>`):r.textContent=t):r.style.display="none"}};
         const togglePause=()=>{isPaused=!isPaused,isPaused?(pauseResumeBtn.textContent="Devam Et",pauseResumeBtn.classList.remove("bg-amber-600","hover:bg-amber-500"),pauseResumeBtn.classList.add("bg-green-600","hover:bg-green-500"),appendLog("[SYSTEM] Log akışı durduruldu.")):(pauseResumeBtn.textContent="Durdur",pauseResumeBtn.classList.remove("bg-green-600","hover:bg-green-500"),pauseResumeBtn.classList.add("bg-amber-600","hover:bg-amber-500"),appendLog("[SYSTEM] Log akışı devam ediyor..."))};
-        const handleDisconnect=async()=>{ if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; console.log("Cleared status interval on disconnect."); } logSocket&&logSocket.close();try{await fetch(`${apiUrl}/disconnect`,{method:"POST"})}catch(e){console.error("Disconnect hatası:",e)}finally{showScreen(serverDashboardScreen),loadServers()}};
+        const handleDisconnect=async()=>{ if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; console.log("Cleared status interval on disconnect."); } logSocket&&logSocket.close();try{await fetch(`${apiUrl}/disconnect`,{method:"POST"})}catch(e){console.error("Disconnect hatası:",e)}finally{currentIp = ""; currentActiveServerId = null; showScreen(serverDashboardScreen); loadServers()}};
         const exportLogs=()=>{let e="";for(let t of logContainer.getElementsByClassName("log-line"))t.style.display!=="none"&&(e+=t.textContent+"\n");if(e.trim()==="")return showToast("İndirilecek log bulunamadı.","error");const t=new Blob([e],{type:"text/plain;charset=utf-8"}),s=URL.createObjectURL(t),o=document.createElement("a"),n=new Date,a=`${n.getFullYear()}-${(n.getMonth()+1).toString().padStart(2,"0")}-${n.getDate().toString().padStart(2,"0")}`;o.download=`logs_${logFileName.textContent.replace(/[\/\\]/g,"_")}_${a}.txt`,o.href=s,document.body.appendChild(o),o.click(),document.body.removeChild(o),URL.revokeObjectURL(s)};
         const clearLogs = () => { logContainer.innerHTML = ''; appendLog('[SYSTEM] Log ekranı temizlendi.'); };
+        const requestNotificationPermission = async () => { if (!("Notification" in window)) { showToast("Bu tarayıcı bildirimleri desteklemiyor.", "error"); notificationPermission = 'denied'; return; } try { const permission = await Notification.requestPermission(); notificationPermission = permission; if (permission === 'granted') { showToast('Tarayıcı bildirimlerine izin verildi.', 'success'); } else if (permission === 'denied') { showToast('Tarayıcı bildirimleri engellendi.', 'warn'); } else { showToast('Bildirim izni sorusu kapatıldı.', 'info'); } } catch (error) { console.error("Bildirim izni istenirken hata:", error); notificationPermission = 'denied'; } };
+        const showBrowserNotification = (alarm, line) => { if (notificationPermission !== 'granted') return; const title = 'Log Alarmı Tetiklendi!'; const options = { body: `"${alarm}" deseni bulundu:\n${line.substring(0, 150)}${line.length > 150 ? '...' : ''}`, icon: 'https://img.icons8.com/color/48/error--v1.png' }; new Notification(title, options); };
+        
+        // Ayarlar Modalı Fonksiyonları
+        const openSettingsModal = async (serverId) => { console.log(`Ayarlar açılıyor: ${serverId}`); currentSettingsServerId = serverId; settingsModal.classList.remove('hidden'); notificationSettingsForm.reset(); alarmList.innerHTML = '<div class="text-center text-slate-400">Yükleniyor...</div>'; try { const response = await fetch(`${apiUrl}/settings/${serverId}`); const data = await response.json(); if (!data.success) throw new Error(data.message); const settings = data.settings; activeAlarms = settings.alarms || []; renderAlarms(); const notif = settings.notifications; notificationSettingsForm.querySelector('[name="browser_enabled"]').checked = notif.browser.enabled; notificationSettingsForm.querySelector('[name="email_enabled"]').checked = notif.email.enabled; notificationSettingsForm.querySelector('[name="email_to"]').value = notif.email.to || ''; notificationSettingsForm.querySelector('[name="email_smtpHost"]').value = notif.email.smtpHost || ''; 
+                // DÜZELTME: Hatalı tırnak düzeltildi
+                notificationSettingsForm.querySelector('[name="email_smtpPort"]').value = notif.email.smtpPort || 587; 
+                notificationSettingsForm.querySelector('[name="email_smtpUser"]').value = notif.email.smtpUser || ''; notificationSettingsForm.querySelector('[name="email_smtpPass"]').value = notif.email.smtpPass ? '******' : '';
+                notificationSettingsForm.querySelector('[name="webhook_enabled"]').checked = notif.webhook.enabled; notificationSettingsForm.querySelector('[name="webhook_url"]').value = notif.webhook.url ? '******' : '';
+                const tempSettingsStr = localStorage.getItem(`tempSettings_${serverId}`); if (tempSettingsStr) { const tempSettings = JSON.parse(tempSettingsStr); console.log("Geçici ayarlar localStorage'dan yüklendi:", tempSettings); notificationSettingsForm.querySelector('[name="email_to"]').value = tempSettings.email_to || ''; notificationSettingsForm.querySelector('[name="email_smtpHost"]').value = tempSettings.email_smtpHost || ''; 
+                // DÜZELTME: Hatalı tırnak düzeltildi
+                notificationSettingsForm.querySelector('[name="email_smtpPort"]').value = tempSettings.email_smtpPort || 587; 
+                notificationSettingsForm.querySelector('[name="email_smtpUser"]').value = tempSettings.email_smtpUser || ''; }
+                toggleNotificationFields(); } catch (error) { showToast(`Ayarlar yüklenemedi: ${error.message}`, 'error'); settingsModal.classList.add('hidden'); } };
+        const toggleNotificationFields = () => { emailSettingsFields.classList.toggle('hidden', !emailToggleCb.checked); webhookSettingsFields.classList.toggle('hidden', !webhookToggleCb.checked); };
+        const handleSaveSettings = async () => { 
+            const formData = new FormData(notificationSettingsForm);
+            
+            const settings = {
+                alarms: activeAlarms,
+                notifications: {
+                    browser: { enabled: formData.has('browser_enabled') },
+                    email: {
+                        enabled: formData.has('email_enabled'),
+                        to: formData.get('email_to'),
+                        smtpHost: formData.get('email_smtpHost'),
+                        smtpPort: parseInt(formData.get('email_smtpPort'), 10) || 587,
+                        smtpUser: formData.get('email_smtpUser'),
+                        smtpPass: formData.get('email_smtpPass')
+                    },
+                    webhook: {
+                        enabled: formData.has('webhook_enabled'),
+                        url: formData.get('webhook_url')
+                    }
+                }
+            };
+            
+            // DÜZELTME: '******' maskesini kontrol et
+            if (settings.notifications.email.smtpPass === '******') {
+                delete settings.notifications.email.smtpPass; // '******' ise backend'e gönderme, eski değeri koru
+            }
+            if (settings.notifications.webhook.url === '******') {
+                delete settings.notifications.webhook.url; // '******' ise backend'e gönderme, eski değeri koru
+            }
 
-        // Olay Dinleyicileri (DÜZELTİLDİ: Tek blokta)
+            const submitButton = saveSettingsBtn; const originalButtonText = submitButton.innerHTML; submitButton.innerHTML = '<span class="spinner mr-2"></span>Kaydediliyor...'; submitButton.disabled = true; 
+            try { 
+                const response = await fetch(`${apiUrl}/settings/${currentSettingsServerId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }); 
+                const data = await response.json(); if (!response.ok) throw new Error(data.message); 
+                localStorage.removeItem(`tempSettings_${currentSettingsServerId}`); console.log("Geçici ayarlar localStorage'dan temizlendi."); 
+                showToast('Ayarlar başarıyla kaydedildi.', 'success'); settingsModal.classList.add('hidden'); 
+            } catch (error) { showToast(`Ayarlar kaydedilemedi: ${error.message}`, 'error'); 
+            } finally { submitButton.innerHTML = originalButtonText; submitButton.disabled = false; } 
+        };
+        const saveTempSettingsAndCloseModal = () => { if (currentSettingsServerId) { console.log("Geçici ayarlar localStorage'a kaydediliyor..."); const formData = new FormData(notificationSettingsForm); const tempSettings = { email_to: formData.get('email_to'), email_smtpHost: formData.get('email_smtpHost'), email_smtpPort: formData.get('email_smtpPort'), email_smtpUser: formData.get('email_smtpUser') }; localStorage.setItem(`tempSettings_${currentSettingsServerId}`, JSON.stringify(tempSettings)); } settingsModal.classList.add('hidden'); };
+        const addAlarmFromForm = (e) => { e.preventDefault(); alarmRegexError.textContent = ''; const newAlarm = alarmInput.value.trim(); if (!newAlarm) return; if (activeAlarms.includes(newAlarm)) { alarmRegexError.textContent = 'Bu alarm zaten mevcut.'; return; } 
+            // DÜZELTME: Regex'i /.../ formatında değilse bile test et
+            try { new RegExp(newAlarm); } catch (e) { 
+                // Eğer / ile başlıyorsa bu geçersiz bir regex'tir
+                if (newAlarm.startsWith('/')) {
+                    alarmRegexError.textContent = 'Girdiğiniz ifade geçersiz bir Regex deseni.'; return; 
+                }
+                // Değilse, normal metindir, hata yok.
+            } 
+            activeAlarms.push(newAlarm); renderAlarms(); alarmInput.value = ''; 
+        };
+        const removeAlarmFromList = (alarmToRemove) => { activeAlarms = activeAlarms.filter(alarm => alarm !== alarmToRemove); renderAlarms(); };
+        const renderAlarms = () => { alarmList.innerHTML = ''; if (activeAlarms.length === 0) { alarmList.innerHTML = '<p class="text-slate-500 text-center text-xs">Aktif alarm yok.</p>'; return; } activeAlarms.forEach(alarm => { const item = document.createElement('div'); item.className = 'alarm-item flex justify-between items-center bg-slate-800 px-2 py-1 rounded'; item.innerHTML = `<span class="font-mono text-cyan-300 truncate" title="${alarm}">${alarm}</span><button data-alarm="${alarm}" class="remove-alarm-btn text-red-400 hover:text-red-300 text-lg">&times;</button>`; alarmList.appendChild(item); }); };
+
+        // Olay Dinleyicileri
         document.addEventListener("DOMContentLoaded",()=>{showScreen(serverDashboardScreen),loadServers();});
         showAddServerModalBtn.addEventListener("click",openAddServerModal);
         const closeModal=()=>{addServerModal.classList.add("hidden"); addServerForm.reset(); addServerError.textContent='';};
         closeAddServerModalBtn.addEventListener("click",closeModal);cancelAddServerBtn.addEventListener("click",closeModal);authTypeRadios.forEach(e=>e.addEventListener("change",toggleAuthFields));addServerForm.addEventListener("submit",handleAddServer);
-        serverListContainer.addEventListener("click",e=>{ const t=e.target.closest(".connect-btn"),s=e.target.closest(".delete-btn"), o=e.target.closest(".edit-btn"); if(t)handleConnect(t.dataset.id,t.dataset.ip); else if(s)handleDelete(s.dataset.id); else if(o)openEditServerModal(o.dataset.id);});
+        serverListContainer.addEventListener("click",e=>{ const t=e.target.closest(".connect-btn"),s=e.target.closest(".delete-btn"), o=e.target.closest(".edit-btn"), a=e.target.closest(".settings-btn"); if(t)handleConnect(t.dataset.id,t.dataset.ip); else if(s)handleDelete(s.dataset.id); else if(o)openEditServerModal(o.dataset.id); else if(a)openSettingsModal(a.dataset.id); });
         const closeEditModal = () => editServerModal.classList.add('hidden');
         closeEditServerModalBtn.addEventListener('click', closeEditModal); cancelEditServerBtn.addEventListener('click', closeEditModal); editAuthTypeRadios.forEach(radio => radio.addEventListener('change', toggleEditAuthFields)); editServerForm.addEventListener('submit', handleEditServer);
-        logListContainer.addEventListener("click",e=>{const t=e.target.closest(".watch-btn"),s=e.target.closest(".browser-item");t?startLogStream(t.dataset.file):s&&s.dataset.type==="directory"&&renderBrowser(s.dataset.path)});filterInput.addEventListener("input",applyFilterAndHighlight);regexToggle.addEventListener("change",applyFilterAndHighlight);pauseResumeBtn.addEventListener("click",togglePause);backToSelectBtn.addEventListener("click",()=>{ if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; console.log("Cleared status interval when going back to browser."); } logSocket&&logSocket.close();showScreen(logSelectScreen)});disconnectBtnSelect.addEventListener("click",handleDisconnect);disconnectBtnViewer.addEventListener("click",handleDisconnect);exportLogsBtn.addEventListener("click",exportLogs);
+        const closeSettingsModal = () => saveTempSettingsAndCloseModal();
+        closeSettingsModalBtn.addEventListener('click', closeSettingsModal); cancelSettingsBtn.addEventListener('click', closeSettingsModal); saveSettingsBtn.addEventListener('click', handleSaveSettings); emailToggleCb.addEventListener('change', toggleNotificationFields); webhookToggleCb.addEventListener('change', toggleNotificationFields); addAlarmForm.addEventListener('submit', addAlarmFromForm);
+        alarmList.addEventListener('click', (e) => { if (e.target.classList.contains('remove-alarm-btn')) removeAlarmFromList(e.target.dataset.alarm); });
+        logListContainer.addEventListener("click",e=>{const t=e.target.closest(".watch-btn"),s=e.target.closest(".browser-item");t?startLogStream(t.dataset.file):s&&s.dataset.type==="directory"&&renderBrowser(s.dataset.path)});filterInput.addEventListener("input",applyFilterAndHighlight);regexToggle.addEventListener("change",applyFilterAndHighlight);pauseResumeBtn.addEventListener("click",togglePause);backToSelectBtn.addEventListener("click",()=>{ if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; } logSocket&&logSocket.close();showScreen(logSelectScreen)});disconnectBtnSelect.addEventListener("click",handleDisconnect);disconnectBtnViewer.addEventListener("click",handleDisconnect);exportLogsBtn.addEventListener("click",exportLogs);
         clearLogsBtn.addEventListener('click', clearLogs);
-
     </script>
 
 </body>
