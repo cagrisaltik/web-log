@@ -1,5 +1,5 @@
 <div align="center">
-<img src="https://i.imgur.com/vH7a6dJ.png"  width="150">
+<img src="https://img.icons8.com/?size=100&id=krF61fGNbkFk&format=png&color=000000)"  width="150">
 <h1>Sunucu Log Yöneticisi</h1>
 <p>
 <b>Web tabanlı, gerçek zamanlı ve etkileşimli SSH log izleme platformu</b>
