@@ -81,7 +81,4 @@ Daha öncesinde indirmiş olduğunuz serviceAccountKey.json dosyası ile install
 
 Adım 3 : Kurulumda bir sorun ile karşılaşılmaması halinde frontend yayına başlayacak. Backend ise Screen içerisinde çalışır durumda olacaktır.
 
-Backend'i Başlatın:
-log-monitor-backend klasörünün içindeyken:
 
-node server.js
