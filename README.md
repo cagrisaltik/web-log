@@ -53,8 +53,10 @@ Proxy & SSL: Nginx, Let's Encrypt
 Bu projeyi kendi altyapınızda çalıştırmak için aşağıdaki adımları dikkatlice izleyin.
 
 Ön Gereksinimler
+---
 
 Adım 1: Firebase Projesi Oluşturma
+
 
 Uygulamanın sunucu bilgilerini saklayabilmesi için bir Firestore veritabanına ihtiyacımız var.
 
@@ -65,6 +67,8 @@ Proje panelinden Firestore Database'i seçin ve  yeni bir veritabanı oluşturun
 Proje Ayarları ⚙️ > Hizmet Hesapları sekmesine gidin.
 
 "Yeni özel anahtar oluştur" butonuna tıklayarak serviceAccountKey.json dosyasını indirin. Bu dosya, backend'inizin kimliğini doğrulamak için kullanılacak ve gizli tutulmalıdır.
+
+---
 
 Adım 2: Backend Kurulumu
 
@@ -86,7 +90,7 @@ Daha öncesinde indirmiş olduğunuz serviceAccountKey.json dosyası ile install
 
  ./install.weblog.sh
 
-
+ ---
 Adım 3 : Kurulumda bir sorun ile karşılaşılmaması halinde frontend yayına başlayacak. Backend ise Screen içerisinde çalışır durumda olacaktır.
 
 
