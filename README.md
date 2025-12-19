@@ -34,6 +34,8 @@ Sunucu Log Yöneticisi, sunucularınızdaki log dosyalarını bir web arayüzü 
 
 🎨 Renklendirilmiş Loglar: error, warn, info gibi anahtar kelimelere göre log satırlarını otomatik olarak renklendirir.
 
+---
+
 🛠️ Teknoloji Yığını
 
 Backend: Node.js, Express.js, WebSocket (ws), SSH2, Firebase Admin
@@ -43,6 +45,8 @@ Frontend: HTML5, Tailwind CSS, Vanilla JavaScript
 Veritabanı: Google Firestore
 
 Proxy & SSL: Nginx, Let's Encrypt
+
+---
 
 🚀 Kurulum Kılavuzu
 
@@ -65,12 +69,16 @@ Proje Ayarları ⚙️ > Hizmet Hesapları sekmesine gidin.
 Adım 2: Backend Kurulumu
 
 Installer'i İndirin:
-
+```bash
 curl -O https://raw.githubusercontent.com/cagrisaltik/weblog-installer/main/install.weblog.sh
 
+```
 Installer dosyasına çalıştırma izni verin
 
+```bash
 chmod +x install.weblog.sh
+
+```
 
 Daha öncesinde indirmiş olduğunuz serviceAccountKey.json dosyası ile install.weblog.sh dosyasını aynı dizinde bulundurun.
 
