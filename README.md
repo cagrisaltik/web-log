@@ -88,7 +88,10 @@ Daha öncesinde indirmiş olduğunuz serviceAccountKey.json dosyası ile install
 
 ./ İle scripti çalıştırıp kurulum sırasında sizlerden istenilen bilgileri giriniz.
 
+```bash
  ./install.weblog.sh
+
+```
 
  ---
 Adım 3 : Kurulumda bir sorun ile karşılaşılmaması halinde frontend yayına başlayacak. Backend ise Screen içerisinde çalışır durumda olacaktır.
